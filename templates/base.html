@@ -1,0 +1,9 @@
+{% load static %}<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{% block title %}Cuadratura{% endblock %}</title><link rel="stylesheet" href="{% static 'css/app.css' %}"></head>
+<body><a class="skip" href="#contenido">Saltar al contenido</a>
+<header><a class="brand" href="{% url 'organization-list' %}">Cuadratura</a>{% if user.is_authenticated %}<nav aria-label="Principal"><a href="{% url 'organization-list' %}">Mis organizaciones</a><form action="{% url 'logout' %}" method="post">{% csrf_token %}<button>Salir</button></form></nav>{% endif %}</header>
+{% if organization %}<div class="tenant" role="status"><strong>Contribuyente activo:</strong> {{ organization.legal_name }} · {{ organization.tax_id }}</div>{% endif %}
+<main id="contenido" tabindex="-1">{% for message in messages %}<div class="notice">{{ message }}</div>{% endfor %}{% block content %}{% endblock %}</main>
+<script>document.querySelectorAll('form.sensitive').forEach(f=>f.addEventListener('submit',()=>{f.querySelectorAll('button[type=submit]').forEach(b=>{b.disabled=true;b.textContent='Procesando…'})}));</script>
+</body></html>
+

@@ -1,0 +1,2 @@
+{% extends "base.html" %}{% block content %}<h1>{{ title }}</h1>{% include "core/form_errors.html" %}<form method="post" class="sensitive">{% csrf_token %}{{ form.as_p }}<button type="submit">Guardar</button></form>{% endblock %}
+

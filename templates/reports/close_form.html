@@ -1,0 +1,2 @@
+{% extends "base.html" %}{% block content %}<h1>{% if reopen %}Reabrir{% else %}Cerrar{% endif %} período {{ period|date:"m/Y" }}</h1>{% if not reopen %}<p>Retención y PPM son valores mensuales manuales, no cálculos derivados de boletas.</p>{% endif %}{% include "core/form_errors.html" %}<form method="post" class="sensitive">{% csrf_token %}{{ form.as_p }}<button type="submit">Confirmar</button></form>{% endblock %}
+
