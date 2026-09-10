@@ -6,6 +6,7 @@ __pycache__/
 !.env.example
 local/
 docs/*.xlsx
+docs/*.csv
 media/
 staticfiles/
 .coverage

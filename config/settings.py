@@ -10,7 +10,7 @@ INSTALLED_APPS = [
     "django.contrib.admin", "django.contrib.auth", "django.contrib.contenttypes",
     "django.contrib.sessions", "django.contrib.messages", "django.contrib.staticfiles",
     "accounts", "organizations", "sales", "payments", "documents", "reports",
-    "sii", "integrations", "audit",
+    "sii", "integrations", "imports", "audit",
 ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware", "whitenoise.middleware.WhiteNoiseMiddleware",
@@ -51,5 +51,6 @@ LOGIN_REDIRECT_URL = "organization-list"
 LOGOUT_REDIRECT_URL = "login"
 SII_GATEWAY = os.environ.get("SII_GATEWAY", "disabled")
 FILE_UPLOAD_PERMISSIONS = 0o640
+FILE_UPLOAD_MAX_MEMORY_SIZE = 2 * 1024 * 1024
+DATA_UPLOAD_MAX_MEMORY_SIZE = 3 * 1024 * 1024
 SECURE_CONTENT_TYPE_NOSNIFF = True
-

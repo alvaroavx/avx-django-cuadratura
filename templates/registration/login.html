@@ -1,2 +1,5 @@
-{% extends "base.html" %}{% block content %}<h1>Ingresar</h1><form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Ingresar</button></form>{% endblock %}
+{% extends "base.html" %}
+{% block title %}Ingresar · Cuadratura{% endblock %}
+{% block breadcrumb %}<li aria-current="page"><span>Ingresar</span></li>{% endblock %}
+{% block content %}<div class="page-heading"><div><span class="eyebrow">Acceso seguro</span><h1>Ingresar a Cuadratura</h1><p>Administra operaciones y documentación tributaria de tus organizaciones.</p></div></div>{% include "core/form_errors.html" %}<form method="post" class="form-card">{% csrf_token %}{{ form.as_p }}<button class="button button-primary" type="submit">Ingresar</button></form>{% endblock %}
 

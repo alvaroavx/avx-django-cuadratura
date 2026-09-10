@@ -1,3 +1,4 @@
+from datetime import date
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
@@ -21,7 +22,7 @@ def organization_create(request):
     form=OrganizationForm(request.POST or None)
     if request.method=="POST" and form.is_valid():
         org=form.save(); record_event(organization=org,actor=request.user,action="organization.created",target=org); messages.success(request,"Contribuyente creado."); return redirect("organization-list")
-    return render(request,"organizations/form.html",{"form":form,"title":"Nuevo contribuyente"})
+    return render(request,"organizations/form.html",{"form":form,"title":"Nuevo contribuyente","organization_form":True})
 
 @login_required
 @require_http_methods(["GET","POST"])
@@ -31,7 +32,7 @@ def organization_edit(request, organization_id):
     form=OrganizationForm(request.POST or None,instance=org)
     if request.method=="POST" and form.is_valid():
         form.save(); record_event(organization=org,actor=request.user,action="organization.updated",target=org,metadata={"active":org.is_active,"dte_39":org.dte_39_enabled,"dte_41":org.dte_41_enabled}); messages.success(request,"Contribuyente actualizado."); return redirect("organization-list")
-    return render(request,"organizations/form.html",{"form":form,"organization":org,"title":"Configurar contribuyente"})
+    return render(request,"organizations/form.html",{"form":form,"organization":org,"title":"Configurar contribuyente","organization_form":True})
 
 @login_required
 @require_http_methods(["GET","POST"])
@@ -49,7 +50,7 @@ def membership_create(request, organization_id):
     form=MembershipForm(request.POST or None)
     if request.method=="POST" and form.is_valid():
         membership=form.save(commit=False); membership.organization=org; membership.save(); record_event(organization=org,actor=request.user,action="membership.created",target=membership,metadata={"role":membership.role}); messages.success(request,"Membresía guardada."); return redirect("organization-period-current",organization_id=org.id)
-    return render(request,"organizations/form.html",{"form":form,"organization":org,"title":"Asignar membresía"})
+    return render(request,"organizations/form.html",{"form":form,"organization":org,"title":"Equipo y permisos"})
 
 @login_required
 @require_http_methods(["GET","POST"])
@@ -65,4 +66,10 @@ def controlled_user_create(request, organization_id):
             record_event(organization=org,actor=request.user,action="user.controlled_created",target=membership,metadata={"role":membership.role})
         messages.success(request,"Usuario y membresía creados. Entregue la contraseña inicial por un canal seguro.")
         return redirect("organization-period-current",organization_id=org.id)
-    return render(request,"organizations/form.html",{"form":form,"organization":org,"title":"Alta controlada de usuario"})
+    return render(request,"organizations/form.html",{"form":form,"organization":org,"title":"Crear usuario"})
+
+@login_required
+def organization_administration(request, organization_id, period):
+    org=authorized_organization(request.user,organization_id,roles=ADMIN_ROLES)
+    month=date.fromisoformat(f"{period}-01")
+    return render(request,"organizations/administration.html",{"organization":org,"period":month,"is_platform_admin":request.user.is_platform_admin})

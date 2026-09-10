@@ -1,5 +1,49 @@
-{% extends "base.html" %}{% load chilean %}{% block content %}<div class="heading"><div><h1>Período {{ period|date:"m/Y" }}</h1><p>Resumen mensual y conciliación.</p></div>{% if can_write and close.status != 'CLOSED' %}<a class="button" href="{% url 'manual-operation' organization.id period|date:'Y-m' %}">Registrar operación</a>{% endif %}</div>
-<section class="metrics" aria-label="Resumen"><article><span>Total recibido</span><strong>$ {{ summary.received|clp }}</strong></article><article><span>Total documentado</span><strong>$ {{ summary.documented|clp }}</strong></article><article><span>Diferencia</span><strong>$ {{ summary.difference|clp }}</strong></article><article><span>Afecto</span><strong>$ {{ summary.taxable|clp }}</strong></article><article><span>Exento</span><strong>$ {{ summary.exempt|clp }}</strong></article><article><span>IVA débito</span><strong>$ {{ summary.vat|clp }}</strong></article></section>
-<p class="states"><span class="state warn">! Pendientes {{ summary.pending }}</span> <span class="state ok">✓ Aceptadas {{ summary.accepted }}</span> <span class="state bad">× Rechazadas {{ summary.rejected }}</span> <span class="state warn">? Inciertas {{ summary.uncertain }}</span></p>
-<nav class="actions"><a href="{% url 'provisional-export' organization.id period|date:'Y-m' %}">Exportación provisional</a>{% if can_close and close.status != 'CLOSED' %}<a href="{% url 'close-period' organization.id period|date:'Y-m' %}">Cerrar período</a>{% endif %}{% if can_close %}<a href="{% url 'audit-list' organization.id %}">Auditoría</a>{% endif %}{% if can_admin %}<a href="{% url 'organization-invite' organization.id %}">Invitar</a><a href="{% url 'membership-create' organization.id %}">Membresía</a>{% endif %}{% if is_platform_admin %}<a href="{% url 'controlled-user-create' organization.id %}">Alta controlada</a>{% endif %}{% if can_close and close and close.status == 'CLOSED' %}<a href="{% url 'reopen-period' organization.id period|date:'Y-m' close.id %}">Reabrir</a>{% endif %}</nav>
-<h2>Ventas y boletas</h2><div class="table-wrap"><table><thead><tr><th>Operación</th><th>Detalle</th><th>Total</th><th>Venta</th><th>Conciliación</th><th>Boleta</th></tr></thead><tbody>{% for sale in sales %}<tr><td>{{ sale.operation_date|date:"d-m-Y" }}</td><td>{{ sale.detail }}</td><td>$ {{ sale.total_amount|clp }}</td><td>{{ sale.get_status_display }}</td><td>{{ sale.get_reconciliation_status_display }}</td><td>{% if sale.status == 'DOCUMENTED' %}<span class="state ok">✓ Aceptada</span>{% elif can_write and close.status != 'CLOSED' %}<a href="{% url 'manual-receipt' organization.id period|date:'Y-m' sale.id %}">Registrar boleta</a>{% else %}No creada{% endif %}</td></tr>{% empty %}<tr><td colspan="6">Sin operaciones en el período.</td></tr>{% endfor %}</tbody></table></div>{% endblock %}
+{% extends "base.html" %}{% load chilean %}
+{% block title %}Resumen {{ period|date:"m/Y" }} · Cuadratura{% endblock %}
+{% block breadcrumb %}<li><span>{{ organization.legal_name }}</span></li><li aria-current="page"><span>Resumen {{ period|date:"m/Y" }}</span></li>{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div><span class="eyebrow">Espacio mensual</span><h1>Resumen del período</h1><p>Ventas, documentación tributaria y pagos conocidos de {{ period|date:"F Y" }}.</p></div>
+  <div class="page-actions">
+    {% if can_write and close.status != 'CLOSED' %}<a class="button button-primary" href="{% url 'manual-operation' organization.id period|date:'Y-m' %}">Registrar operación</a>{% endif %}
+    {% if can_import and close.status != 'CLOSED' %}<a class="button button-secondary" href="{% url 'import-create' organization.id period|date:'Y-m' %}">Importar CSV</a>{% endif %}
+  </div>
+</div>
+
+<section class="primary-metrics" aria-label="Totales principales">
+  <article><span>Total recibido</span><strong>$ {{ summary.received|clp }}</strong><small>Pagos con datos conocidos</small></article>
+  <article><span>Total documentado</span><strong>$ {{ summary.documented|clp }}</strong><small>Boletas aceptadas</small></article>
+  <article class="metric-difference"><span>Diferencia</span><strong>$ {{ summary.difference|clp }}</strong><small>Recibido menos documentado</small></article>
+</section>
+{% if summary.documented > summary.received %}<p class="inline-guidance"><span aria-hidden="true">ⓘ</span> El total documentado puede superar lo recibido conocido cuando una importación histórica no informa fecha ni referencia de pago.</p>{% endif %}
+
+<section class="tax-band" aria-label="Resumen tributario">
+  <div><span>Afecto</span><strong>$ {{ summary.taxable|clp }}</strong></div>
+  <div><span>Exento</span><strong>$ {{ summary.exempt|clp }}</strong></div>
+  <div><span>IVA débito</span><strong>$ {{ summary.vat|clp }}</strong></div>
+</section>
+
+<section class="section-block" aria-labelledby="exceptions-heading">
+  <div class="section-heading"><div><h2 id="exceptions-heading">Excepciones</h2><p>Situaciones que requieren revisión antes del cierre.</p></div></div>
+  <div class="status-grid">
+    <div class="status-card status-warning"><span aria-hidden="true">!</span><div><strong>{{ summary.pending }} pendientes</strong><small>Operaciones sin documentación</small></div></div>
+    <div class="status-card status-danger"><span aria-hidden="true">×</span><div><strong>{{ summary.rejected }} rechazadas</strong><small>Boletas que requieren corrección</small></div></div>
+    <div class="status-card status-neutral"><span aria-hidden="true">?</span><div><strong>{{ summary.uncertain }} inciertas</strong><small>No deben volver a emitirse</small></div></div>
+    <div class="status-card status-info"><span aria-hidden="true">i</span><div><strong>{{ summary.historical_incomplete }} históricas incompletas</strong><small>Documentadas, sin datos de pago</small></div></div>
+  </div>
+</section>
+
+<section class="section-block" id="operaciones" aria-labelledby="operations-heading">
+  <div class="section-heading"><div><h2 id="operations-heading">Operaciones</h2><p>Centro operativo del período.</p></div><span class="record-count">{{ sales|length }} registros</span></div>
+  <div class="table-wrap" id="boletas"><table><thead><tr><th scope="col">Fecha</th><th scope="col">Detalle</th><th scope="col" class="amount">Total</th><th scope="col">Venta</th><th scope="col">Conciliación</th><th scope="col">Boleta</th></tr></thead><tbody>
+    {% for sale in sales %}<tr><td>{{ sale.operation_date|date:"d/m/Y" }}</td><td class="detail-cell">{{ sale.detail }}</td><td class="amount">$ {{ sale.total_amount|clp }}</td><td>{{ sale.get_status_display }}</td><td>{% if sale.reconciliation_status == 'RECONCILED' %}<span class="badge badge-success">✓ {{ sale.get_reconciliation_status_display }}</span>{% elif sale.reconciliation_status == 'MISSING_PAYMENT_DATA' %}<span class="badge badge-info">i {{ sale.get_reconciliation_status_display }}</span>{% else %}<span class="badge badge-warning">! {{ sale.get_reconciliation_status_display }}</span>{% endif %}</td><td>{% if sale.status == 'DOCUMENTED' %}<span class="badge badge-success">✓ Aceptada</span>{% elif can_write and close.status != 'CLOSED' %}<a href="{% url 'manual-receipt' organization.id period|date:'Y-m' sale.id %}">Registrar boleta</a>{% else %}No creada{% endif %}</td></tr>
+    {% empty %}<tr><td colspan="6"><div class="empty-state"><strong>Aún no hay operaciones en este período.</strong><span>Registra una operación o importa un archivo CSV.</span></div></td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+
+<div class="functional-panels">
+  <section class="action-panel" id="reportes"><h2>Reportes</h2><p>Descarga el libro provisional y sus excepciones.</p><a class="button button-secondary" href="{% url 'provisional-export' organization.id period|date:'Y-m' %}">Exportación provisional</a></section>
+  {% if can_close %}<section class="action-panel" id="cierres"><h2>Cierre mensual</h2>{% if close.status == 'CLOSED' %}<p><span class="badge badge-success">✓ Período cerrado</span></p><a class="button button-tertiary" href="{% url 'reopen-period' organization.id period|date:'Y-m' close.id %}">Solicitar reapertura</a>{% else %}<p>Revisa excepciones antes de cerrar el período.</p><a class="button button-secondary" href="{% url 'close-period' organization.id period|date:'Y-m' %}">Cerrar período</a>{% endif %}</section>{% endif %}
+  {% if can_close %}<section class="action-panel"><h2>Trazabilidad</h2><p>Consulta las acciones realizadas en la organización.</p><a class="button button-tertiary" href="{% url 'audit-list' organization.id %}">Revisar auditoría</a></section>{% endif %}
+</div>
+{% endblock %}

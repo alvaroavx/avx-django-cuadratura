@@ -1,2 +1,16 @@
-{% extends "base.html" %}{% block content %}<h1>{{ title }}</h1>{% include "core/form_errors.html" %}<form method="post" class="sensitive">{% csrf_token %}{{ form.as_p }}<button type="submit">Guardar</button></form>{% endblock %}
+{% extends "base.html" %}
+{% block title %}{{ title }} · Cuadratura{% endblock %}
+{% block breadcrumb %}{% if organization %}<li><span>{{ organization.legal_name }}</span></li>{% endif %}<li aria-current="page"><span>{{ title }}</span></li>{% endblock %}
+{% block content %}
+<div class="page-heading"><div><h1>{{ title }}</h1>{% if organization_form %}<p>Información administrativa y capacidades tributarias declaradas.</p>{% endif %}</div></div>
+{% include "core/form_errors.html" %}
+<form method="post" class="form-card sensitive">{% csrf_token %}
+  {% if organization_form %}
+    <fieldset><legend>Identificación tributaria</legend><div class="form-grid">{% include "core/field.html" with field=form.tax_id %}{% include "core/field.html" with field=form.legal_name %}{% include "core/field.html" with field=form.trade_name %}</div></fieldset>
+    <fieldset><legend>Documentos habilitados</legend><div class="choice-stack">{% include "core/choice_field.html" with field=form.dte_39_enabled %}{% include "core/choice_field.html" with field=form.dte_41_enabled %}</div></fieldset>
+    <fieldset><legend>Estado del contribuyente</legend><div class="choice-stack">{% include "core/choice_field.html" with field=form.is_active %}</div></fieldset>
+  {% else %}{{ form.as_p }}{% endif %}
+  <div class="form-actions"><button class="button button-primary" type="submit">Guardar</button>{% if organization %}<a class="button button-tertiary" href="{% url 'organization-period-current' organization.id %}">Volver</a>{% else %}<a class="button button-tertiary" href="{% url 'organization-list' %}">Cancelar</a>{% endif %}</div>
+</form>
+{% endblock %}
 

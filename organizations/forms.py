@@ -11,6 +11,19 @@ class OrganizationForm(forms.ModelForm):
     class Meta:
         model=TaxpayerOrganization
         fields=("tax_id","legal_name","trade_name","is_active","dte_39_enabled","dte_41_enabled")
+        labels={
+            "tax_id":"RUT",
+            "legal_name":"Razón social",
+            "trade_name":"Nombre de fantasía",
+            "is_active":"Contribuyente activo",
+            "dte_39_enabled":"DTE 39 — Boleta electrónica afecta",
+            "dte_41_enabled":"DTE 41 — Boleta electrónica exenta",
+        }
+        help_texts={
+            "dte_39_enabled":"Habilita el registro histórico de boletas afectas para esta organización.",
+            "dte_41_enabled":"Habilita el registro histórico de boletas exentas para esta organización.",
+            "is_active":"Las personas asignadas solo pueden trabajar en contribuyentes activos.",
+        }
 
 class InvitationForm(forms.ModelForm):
     class Meta:

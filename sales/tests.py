@@ -96,6 +96,15 @@ class AuthorizationWebTests(TestCase):
         response=self.client.post(reverse("manual-operation",args=[self.org_a.id,"2026-07"]),{"total":"abc","operation_date":"2026-07-01","payment_date":"2026-07-01","detail":"Conservar este detalle","classification":"TAXABLE","idempotency_key":str(uuid.uuid4())})
         self.assertEqual(response.status_code,200); self.assertContains(response,"Conservar este detalle"); self.assertContains(response,"Revise los siguientes errores")
 
+    def test_period_dashboard_renders_serene_navigation_and_empty_state(self):
+        self.client.force_login(self.user)
+        response=self.client.get(reverse("organization-period",args=[self.org_a.id,"2026-07"]))
+        self.assertEqual(response.status_code,200)
+        self.assertContains(response,"Contribuyente activo")
+        self.assertContains(response,"aria-current=\"page\"")
+        self.assertContains(response,"Aún no hay operaciones en este período")
+        self.assertContains(response,"Importar CSV")
+
     def test_platform_admin_controlled_user_creation_hashes_password_and_assigns_tenant(self):
         admin=User.objects.create_user("platform",password="Admin-safe-987!",platform_role="PLATFORM_ADMIN")
         self.client.force_login(admin); raw="Initial-safe-987!"
@@ -104,6 +113,17 @@ class AuthorizationWebTests(TestCase):
         created=User.objects.get(username="new-user"); self.assertTrue(created.check_password(raw)); self.assertNotEqual(created.password,raw)
         self.assertTrue(OrganizationMembership.objects.filter(organization=self.org_a,user=created,role="OPERATOR").exists())
         event=AuditEvent.objects.get(action="user.controlled_created"); self.assertNotIn(raw,str(event.metadata))
+
+    def test_organization_form_uses_requested_tax_language_and_groups(self):
+        admin=User.objects.create_user("platform-form",platform_role="PLATFORM_ADMIN")
+        self.client.force_login(admin)
+        response=self.client.get(reverse("organization-create"))
+        self.assertContains(response,"Identificación tributaria")
+        self.assertContains(response,"Documentos habilitados")
+        self.assertContains(response,"Estado del contribuyente")
+        self.assertContains(response,"DTE 39 — Boleta electrónica afecta")
+        self.assertContains(response,"DTE 41 — Boleta electrónica exenta")
+        self.assertContains(response,"Contribuyente activo")
 
 class ConcurrentIdempotencyTests(TransactionTestCase):
     reset_sequences=True

@@ -9,7 +9,7 @@ class Sale(models.Model):
     class TaxClassification(models.TextChoices):
         TAXABLE="TAXABLE","Afecta"; EXEMPT="EXEMPT","Exenta"
     class ReconciliationStatus(models.TextChoices):
-        PENDING="PENDING","Pendiente"; RECONCILED="RECONCILED","Conciliada"; AMOUNT_DIFFERENCE="AMOUNT_DIFFERENCE","Diferencia de monto"; POSSIBLE_DUPLICATE="POSSIBLE_DUPLICATE","Posible duplicado"; CLASSIFICATION_CONFLICT="CLASSIFICATION_CONFLICT","Conflicto de clasificación"; CORRECTION_REQUIRED="CORRECTION_REQUIRED","Requiere corrección"
+        PENDING="PENDING","Pendiente"; RECONCILED="RECONCILED","Conciliada"; AMOUNT_DIFFERENCE="AMOUNT_DIFFERENCE","Diferencia de monto"; POSSIBLE_DUPLICATE="POSSIBLE_DUPLICATE","Posible duplicado"; CLASSIFICATION_CONFLICT="CLASSIFICATION_CONFLICT","Conflicto de clasificación"; CORRECTION_REQUIRED="CORRECTION_REQUIRED","Requiere corrección"; MISSING_PAYMENT_DATA="MISSING_PAYMENT_DATA","Faltan datos del pago"
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     organization = models.ForeignKey(TaxpayerOrganization, on_delete=models.PROTECT, related_name="sales")
     operation_date = models.DateField()
@@ -42,4 +42,3 @@ class SaleLine(models.Model):
     quantity = models.DecimalField(max_digits=12, decimal_places=3, default=1)
     unit_amount = models.PositiveBigIntegerField()
     total_amount = models.PositiveBigIntegerField()
-

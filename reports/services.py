@@ -13,6 +13,11 @@ from .models import MonthlyClose
 
 HEADERS = ["Correlativo", "RUT contribuyente", "Razón social", "Período", "Tipo operación", "Folio", "Tipo documento", "Emisor tributario", "Vendedor o firmante", "Clasificación", "Fecha operación", "Detalle", "Neto", "IVA", "Total"]
 
+def spreadsheet_safe(value):
+    if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
+        return "'" + value
+    return value
+
 def period_receipts(organization, period):
     return ElectronicReceipt.objects.filter(organization=organization, status=ElectronicReceipt.Status.ACCEPTED, tax_issue_date__year=period.year, tax_issue_date__month=period.month).select_related("sale").order_by("tax_issue_date", "folio")
 
@@ -21,14 +26,14 @@ def generate_workbook(organization, period, withholding=0, ppm=0):
     receipts=list(period_receipts(organization, period))
     for index, receipt in enumerate(receipts, 1):
         sale=receipt.sale
-        ws.append([index, organization.tax_id, organization.legal_name, period.strftime("%Y-%m"), "VENTA", receipt.folio, f"DTE {receipt.document_type}", receipt.issuer_name, receipt.signer_name, sale.get_tax_classification_display(), sale.operation_date, sale.detail, receipt.net_amount, receipt.vat_amount, receipt.total_amount])
+        ws.append([index, spreadsheet_safe(organization.tax_id), spreadsheet_safe(organization.legal_name), period.strftime("%Y-%m"), "VENTA", receipt.folio, f"DTE {receipt.document_type}", spreadsheet_safe(receipt.issuer_name), spreadsheet_safe(receipt.signer_name), sale.get_tax_classification_display(), sale.operation_date, spreadsheet_safe(sale.detail), receipt.net_amount, receipt.vat_amount, receipt.total_amount])
     totals=[sum(getattr(r, field) for r in receipts) for field in ("net_amount","vat_amount","total_amount")]
     ws.append([]); ws.append(["TOTALES MENSUALES"]+[""]*11+totals)
     ws.append(["IVA débito fiscal", totals[1]]); ws.append(["Retención segunda categoría (manual)", withholding]); ws.append(["PPM (manual)", ppm]); ws.freeze_panes="A2"; ws.auto_filter.ref=ws.dimensions
     ex=wb.create_sheet("Excepciones")
     ex.append(["Estado", "Fecha operación", "Detalle", "Total", "Motivo"])
     exceptions=Sale.objects.filter(organization=organization, operation_date__year=period.year, operation_date__month=period.month).exclude(reconciliation_status=Sale.ReconciliationStatus.RECONCILED)
-    for sale in exceptions: ex.append([sale.get_reconciliation_status_display(), sale.operation_date, sale.detail, sale.total_amount, "No se incluye en libro definitivo mientras esté pendiente"])
+    for sale in exceptions: ex.append([sale.get_reconciliation_status_display(), sale.operation_date, spreadsheet_safe(sale.detail), sale.total_amount, "No se incluye en libro definitivo mientras esté pendiente"])
     out=BytesIO(); wb.save(out); return out.getvalue(), totals, exceptions.exists()
 
 @transaction.atomic

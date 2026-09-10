@@ -13,6 +13,8 @@ Cuadratura es un monolito modular. Las vistas resuelven la organización desde e
 - Una boleta manual aceptada copia los importes preliminares de la venta y luego concilia pago contra documento. Esto es carga de un documento conocido, nunca emisión.
 - PostgreSQL impide actualizar una boleta aceptada y eliminar ventas, pagos, boletas, cierres o auditorías. Las correcciones futuras deberán crear su propio flujo auditado.
 - Un período cerrado bloquea nueva captura. Reabrir requiere rol, motivo y evento de auditoría.
+- La importación histórica es un flujo de dos pasos: el preview persiste lote/filas y archivo privado, pero no registros financieros; el commit bloquea el lote y crea solo filas `NEW` en una transacción.
+- Una fila histórica crea `Sale + SaleLine + ElectronicReceipt` aceptada, nunca `Payment`, y usa `MISSING_PAYMENT_DATA` hasta completar datos reales del pago.
 
 ## Estados
 

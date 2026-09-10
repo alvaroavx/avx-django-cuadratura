@@ -10,5 +10,6 @@
 
 Las pruebas cubren manipulación de URL, POST, UUID subordinado, rol de solo lectura, doble envío concurrente y ausencia de la referencia de pago en auditoría. Antes de producción deben añadirse TLS, cookies seguras, proxy confiable, backup/restauración ensayada, retención de archivos, monitoreo, política de sesión, antivirus de cargas y revisión de dependencias.
 
-Nunca se deben guardar certificado, contraseña, CAF, llave privada o llave maestra en Git, logs o texto plano. La futura llave maestra vivirá en un secret manager/HSM fuera de PostgreSQL.
+Las importaciones limitan el CSV a 2 MiB y 500 filas, validan UTF-8, extensión, delimitador, estructura, organización y período. El archivo original queda bajo `media/private/imports` sin ruta web pública. Los lotes se identifican por SHA-256, no se registra contenido personal en logs y los lotes confirmados son append-only en PostgreSQL. Los textos con prefijos `=`, `+`, `-` o `@` se conservan como dato original, pero se neutralizan antes de exportarlos a XLSX.
 
+Nunca se deben guardar certificado, contraseña, CAF, llave privada o llave maestra en Git, logs o texto plano. La futura llave maestra vivirá en un secret manager/HSM fuera de PostgreSQL.

@@ -6,7 +6,7 @@ from django.db.models import Sum
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods
 from documents.models import ElectronicReceipt
-from organizations.access import CLOSE_ROLES, READ_ROLES, WRITE_ROLES, authorized_organization
+from organizations.access import CLOSE_ROLES, IMPORT_ROLES, READ_ROLES, WRITE_ROLES, authorized_organization
 from organizations.models import OrganizationMembership
 from reports.models import MonthlyClose
 from .forms import ManualOperationForm, ReceiptForm
@@ -30,10 +30,10 @@ def period_dashboard(request,organization_id,period):
     total_received=sales.aggregate(v=Sum("payments__amount"))["v"] or 0
     accepted=receipts.filter(status=ElectronicReceipt.Status.ACCEPTED)
     total_documented=accepted.aggregate(v=Sum("total_amount"))["v"] or 0
-    summary={"received":total_received,"documented":total_documented,"difference":total_received-total_documented,"taxable":accepted.filter(document_type=39).aggregate(v=Sum("total_amount"))["v"] or 0,"exempt":accepted.filter(document_type=41).aggregate(v=Sum("total_amount"))["v"] or 0,"vat":accepted.aggregate(v=Sum("vat_amount"))["v"] or 0,"pending":sales.exclude(status=Sale.Status.DOCUMENTED).count(),"accepted":accepted.count(),"rejected":receipts.filter(status=ElectronicReceipt.Status.REJECTED).count(),"uncertain":receipts.filter(status=ElectronicReceipt.Status.UNCERTAIN).count()}
+    summary={"received":total_received,"documented":total_documented,"difference":total_received-total_documented,"taxable":accepted.filter(document_type=39).aggregate(v=Sum("total_amount"))["v"] or 0,"exempt":accepted.filter(document_type=41).aggregate(v=Sum("total_amount"))["v"] or 0,"vat":accepted.aggregate(v=Sum("vat_amount"))["v"] or 0,"pending":sales.exclude(status=Sale.Status.DOCUMENTED).count(),"accepted":accepted.count(),"rejected":receipts.filter(status=ElectronicReceipt.Status.REJECTED).count(),"uncertain":receipts.filter(status=ElectronicReceipt.Status.UNCERTAIN).count(),"historical_incomplete":sales.filter(reconciliation_status=Sale.ReconciliationStatus.MISSING_PAYMENT_DATA).count()}
     close=MonthlyClose.objects.filter(organization=org,period=month).order_by("-version").first()
     role=None if request.user.is_platform_admin else OrganizationMembership.objects.filter(organization=org,user=request.user,is_active=True).values_list("role",flat=True).first()
-    return render(request,"sales/dashboard.html",{"organization":org,"period":month,"sales":sales,"summary":summary,"close":close,"can_write":request.user.is_platform_admin or role in WRITE_ROLES,"can_close":request.user.is_platform_admin or role in CLOSE_ROLES,"can_admin":request.user.is_platform_admin or role==OrganizationMembership.Role.ORGANIZATION_ADMIN,"is_platform_admin":request.user.is_platform_admin})
+    return render(request,"sales/dashboard.html",{"organization":org,"period":month,"sales":sales,"summary":summary,"close":close,"can_write":request.user.is_platform_admin or role in WRITE_ROLES,"can_import":request.user.is_platform_admin or role in IMPORT_ROLES,"can_close":request.user.is_platform_admin or role in CLOSE_ROLES,"can_admin":request.user.is_platform_admin or role==OrganizationMembership.Role.ORGANIZATION_ADMIN,"is_platform_admin":request.user.is_platform_admin})
 
 @login_required
 @require_http_methods(["GET","POST"])

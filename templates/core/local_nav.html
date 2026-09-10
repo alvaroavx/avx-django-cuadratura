@@ -1,0 +1,11 @@
+<nav class="local-nav" aria-label="Secciones de la organización">
+  <a href="{% url 'organization-period' organization.id period|date:'Y-m' %}" {% if request.resolver_match.url_name == 'organization-period' %}aria-current="page"{% endif %}><span aria-hidden="true">▦</span>Resumen</a>
+  <a href="{% url 'organization-period' organization.id period|date:'Y-m' %}#operaciones"><span aria-hidden="true">≡</span>Operaciones</a>
+  {% if access.can_import %}<a href="{% url 'import-list' organization.id period|date:'Y-m' %}" {% if 'import' in request.resolver_match.url_name %}aria-current="page"{% endif %}><span aria-hidden="true">⇧</span>Importaciones</a>{% endif %}
+  <a href="{% url 'organization-period' organization.id period|date:'Y-m' %}#boletas"><span aria-hidden="true">▤</span>Boletas y respaldos</a>
+  {% if access.can_close %}<a href="{% url 'organization-period' organization.id period|date:'Y-m' %}#cierres"><span aria-hidden="true">✓</span>Cierres</a>{% endif %}
+  <a href="{% url 'organization-period' organization.id period|date:'Y-m' %}#reportes"><span aria-hidden="true">↓</span>Reportes</a>
+  {% if access.can_close %}<a href="{% url 'audit-list' organization.id %}" {% if request.resolver_match.url_name == 'audit-list' %}aria-current="page"{% endif %}><span aria-hidden="true">◷</span>Auditoría</a>{% endif %}
+  {% if access.can_admin %}<a href="{% url 'organization-administration' organization.id period|date:'Y-m' %}" {% if request.resolver_match.url_name == 'organization-administration' %}aria-current="page"{% endif %}><span aria-hidden="true">⚙</span>Administración</a>{% endif %}
+</nav>
+

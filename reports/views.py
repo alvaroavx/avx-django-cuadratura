@@ -44,5 +44,4 @@ def reopen_period(request,organization_id,period,close_id):
 @login_required
 def audit_list(request,organization_id):
     org=authorized_organization(request.user,organization_id,roles=CLOSE_ROLES)
-    return render(request,"reports/audit.html",{"organization":org,"events":AuditEvent.objects.filter(organization=org).select_related("actor")[:200]})
-
+    return render(request,"reports/audit.html",{"organization":org,"period":date.today().replace(day=1),"events":AuditEvent.objects.filter(organization=org).select_related("actor")[:200]})

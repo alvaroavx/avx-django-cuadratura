@@ -5,6 +5,7 @@ from .models import OrganizationMembership, TaxpayerOrganization
 READ_ROLES = set(OrganizationMembership.Role.values)
 WRITE_ROLES = {OrganizationMembership.Role.ORGANIZATION_ADMIN, OrganizationMembership.Role.ACCOUNTANT, OrganizationMembership.Role.OPERATOR}
 CLOSE_ROLES = {OrganizationMembership.Role.ORGANIZATION_ADMIN, OrganizationMembership.Role.ACCOUNTANT}
+IMPORT_ROLES = {OrganizationMembership.Role.ORGANIZATION_ADMIN, OrganizationMembership.Role.ACCOUNTANT}
 ADMIN_ROLES = {OrganizationMembership.Role.ORGANIZATION_ADMIN}
 
 def authorized_organization(user, organization_id, *, roles=None, active_only=True):
@@ -19,4 +20,3 @@ def authorized_organization(user, organization_id, *, roles=None, active_only=Tr
 def scoped_organizations(user):
     if user.is_platform_admin: return TaxpayerOrganization.objects.all()
     return TaxpayerOrganization.objects.filter(memberships__user=user, memberships__is_active=True).distinct()
-

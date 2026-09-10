@@ -1,9 +1,61 @@
-{% load static %}<!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{% block title %}Cuadratura{% endblock %}</title><link rel="stylesheet" href="{% static 'css/app.css' %}"></head>
-<body><a class="skip" href="#contenido">Saltar al contenido</a>
-<header><a class="brand" href="{% url 'organization-list' %}">Cuadratura</a>{% if user.is_authenticated %}<nav aria-label="Principal"><a href="{% url 'organization-list' %}">Mis organizaciones</a><form action="{% url 'logout' %}" method="post">{% csrf_token %}<button>Salir</button></form></nav>{% endif %}</header>
-{% if organization %}<div class="tenant" role="status"><strong>Contribuyente activo:</strong> {{ organization.legal_name }} · {{ organization.tax_id }}</div>{% endif %}
-<main id="contenido" tabindex="-1">{% for message in messages %}<div class="notice">{{ message }}</div>{% endfor %}{% block content %}{% endblock %}</main>
-<script>document.querySelectorAll('form.sensitive').forEach(f=>f.addEventListener('submit',()=>{f.querySelectorAll('button[type=submit]').forEach(b=>{b.disabled=true;b.textContent='Procesando…'})}));</script>
-</body></html>
+{% load static organization_ui %}<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}Cuadratura{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body>
+  <a class="skip-link" href="#contenido">Saltar al contenido</a>
+  {% organization_access user organization as access %}
+  <header class="topbar">
+    <a class="brand" href="{% url 'organization-list' %}" aria-label="Cuadratura, inicio">
+      <span class="brand-mark" aria-hidden="true">C</span><span>Cuadratura</span>
+    </a>
+    {% if user.is_authenticated %}
+      <div class="user-menu">
+        <span class="user-copy"><strong>{{ user.get_full_name|default:user.username }}</strong><small>{% if access.role %}{{ access.role }}{% elif user.is_platform_admin %}Administrador de plataforma{% else %}Usuario{% endif %}</small></span>
+        <form action="{% url 'logout' %}" method="post">{% csrf_token %}<button class="button button-tertiary button-on-dark" type="submit">Salir</button></form>
+      </div>
+    {% endif %}
+  </header>
+
+  {% if organization %}
+    <section class="organization-context" aria-label="Contexto de trabajo">
+      <div>
+        <span class="eyebrow">Contribuyente activo</span>
+        <strong>{{ organization.legal_name }}</strong>
+        <span class="context-rut">RUT {{ organization.tax_id }}</span>
+      </div>
+      <div class="context-period"><span class="eyebrow">Período activo</span><strong>{% if period %}{{ period|date:"F Y"|capfirst }}{% else %}Sin período seleccionado{% endif %}</strong></div>
+      <a class="context-change" href="{% url 'organization-list' %}">Cambiar organización</a>
+    </section>
+    {% if period %}
+      <details class="mobile-section-menu">
+        <summary>Secciones de la organización</summary>
+        {% include "core/local_nav.html" %}
+      </details>
+    {% endif %}
+  {% endif %}
+
+  <div class="app-shell{% if not organization or not period %} app-shell-single{% endif %}">
+    {% if organization and period %}<aside class="sidebar">{% include "core/local_nav.html" %}</aside>{% endif %}
+    <div class="content-column">
+      <nav class="breadcrumb" aria-label="Ruta de navegación">
+        <ol><li><a href="{% url 'organization-list' %}">Mis organizaciones</a></li>{% block breadcrumb %}{% endblock %}</ol>
+      </nav>
+      <main id="contenido" tabindex="-1">
+        {% for message in messages %}<div class="notice notice-{{ message.tags|default:'info' }}" role="status">{{ message }}</div>{% endfor %}
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </div>
+  <script>
+    document.querySelectorAll('form.sensitive').forEach((form) => form.addEventListener('submit', () => {
+      form.querySelectorAll('button[type=submit]').forEach((button) => { button.disabled = true; button.textContent = 'Procesando…'; });
+    }));
+  </script>
+</body>
+</html>
 
