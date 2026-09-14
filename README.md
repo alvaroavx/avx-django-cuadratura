@@ -2,6 +2,35 @@
 
 Backoffice web autónomo y multiempresa para registrar ventas, pagos, boletas manuales, conciliación y cierres mensuales. Es un sistema independiente: no comparte repositorio, base de datos, autenticación ni modelos con Plataforma Elemental.
 
+## Guía humana
+
+### Qué es, para qué sirve y quiénes lo usan
+
+**Cuadratura** es un backoffice financiero multiempresa para ordenar el trabajo mensual de una organización: registrar operaciones, contrastar ventas y pagos, importar historia y cerrar un período con evidencia. Está dirigido a administradores de plataforma y a usuarios miembros de cada contribuyente con permisos definidos. Es independiente de Plataforma Elemental: no es su API, extensión ni repositorio compartido.
+
+### Qué contiene y cómo trabaja
+
+Contiene un monolito Django server-rendered, PostgreSQL, aplicaciones de cuentas, organizaciones, ventas, pagos, documentos, reportes, importaciones, auditoría e integración futura. Cada operación se ejecuta en el contexto de una organización y el servidor vuelve a comprobar autorización. Las importaciones CSV se previsualizan antes de confirmarse; los cierres preservan versión, archivo y SHA-256. No hay SPA, API pública, worker ni emisión SII real.
+
+### Funcionalidades y tareas que resuelve
+
+- Administrar usuarios, organizaciones, membresías y roles.
+- Registrar ventas, pagos y documentos DTE 39/41 configurables.
+- Importar información histórica mediante CSV con dry-run y confirmación atómica.
+- Conciliar operaciones, construir el libro mensual y exportar un XLSX provisional.
+- Cerrar y reabrir períodos con trazabilidad y auditoría append-only.
+- Mantener un límite explícito para SII: el gateway falla de forma cerrada y no emite documentos reales.
+
+### Trazabilidad humana
+
+- **Solicitante:** no hay una solicitud ni una persona solicitante verificable en la historia o documentación versionada.
+- **Desarrollo:** el primer commit disponible fue creado por **Álvaro Vargas Quezada**; el repositorio no contiene una atribución formal de todos los aportes posteriores.
+- **Cuándo:** el primer registro Git disponible es del **31 de julio de 2026**. La fecha describe el inicio observable del repositorio, no una certificación de inicio del producto.
+
+### Qué puede mejorar y oportunidades
+
+Las oportunidades centrales son validar el libro mensual con la contraparte contable, sustituir la exportación XLSX provisional por un contrato aprobado y decidir si la integración SII será realmente necesaria. Para operar en producción faltan decisiones/evidencia sobre hosting, TLS, respaldos, retención, monitoreo y recuperación. La evolución debe conservar aislamiento por organización, inmutabilidad financiera y auditoría; vea [arquitectura](docs/architecture.md), [seguridad](docs/security.md), [libro mensual](docs/monthly-book.md) y los ADR.
+
 ## Estado del primer corte
 
 Incluye Django server-rendered, usuario propio, organizaciones y membresías con roles fijos, captura manual transaccional, importación histórica CSV con dry-run y commit atómico, DTE 39/41 configurables, conciliación básica, cierres versionados con archivo y SHA-256, reapertura auditada, exportación XLSX provisional y un gateway SII que falla de forma cerrada. **No existe emisión SII real ni API para Elemental.**
