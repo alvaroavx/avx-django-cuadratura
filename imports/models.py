@@ -48,7 +48,8 @@ class ImportBatch(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["organization", "file_hash"], name="uq_import_batch_org_hash"
+                fields=["organization", "period", "file_hash"],
+                name="uq_import_batch_org_period_hash",
             )
         ]
         ordering = ["-uploaded_at"]
@@ -90,4 +91,3 @@ class ImportRow(models.Model):
             models.UniqueConstraint(fields=["batch", "line_number"], name="uq_import_row_line")
         ]
         ordering = ["line_number"]
-

@@ -18,9 +18,25 @@ def _period(value):
     except ValueError: raise ValidationError("Período inválido.")
     return parsed
 
+
 @login_required
 def current_period(request,organization_id):
     today=date.today(); return redirect("organization-period",organization_id=organization_id,period=f"{today:%Y-%m}")
+
+
+@login_required
+def select_period(request, organization_id):
+    org = authorized_organization(request.user, organization_id, roles=READ_ROLES)
+    try:
+        month = _period(request.GET.get("period", ""))
+    except ValidationError:
+        messages.error(request, "Seleccione un período válido.")
+        return redirect("organization-period-current", organization_id=org.id)
+    return redirect(
+        "organization-period",
+        organization_id=org.id,
+        period=month.strftime("%Y-%m"),
+    )
 
 @login_required
 def period_dashboard(request,organization_id,period):
@@ -30,10 +46,24 @@ def period_dashboard(request,organization_id,period):
     total_received=sales.aggregate(v=Sum("payments__amount"))["v"] or 0
     accepted=receipts.filter(status=ElectronicReceipt.Status.ACCEPTED)
     total_documented=accepted.aggregate(v=Sum("total_amount"))["v"] or 0
-    summary={"received":total_received,"documented":total_documented,"difference":total_received-total_documented,"taxable":accepted.filter(document_type=39).aggregate(v=Sum("total_amount"))["v"] or 0,"exempt":accepted.filter(document_type=41).aggregate(v=Sum("total_amount"))["v"] or 0,"vat":accepted.aggregate(v=Sum("vat_amount"))["v"] or 0,"pending":sales.exclude(status=Sale.Status.DOCUMENTED).count(),"accepted":accepted.count(),"rejected":receipts.filter(status=ElectronicReceipt.Status.REJECTED).count(),"uncertain":receipts.filter(status=ElectronicReceipt.Status.UNCERTAIN).count(),"historical_incomplete":sales.filter(reconciliation_status=Sale.ReconciliationStatus.MISSING_PAYMENT_DATA).count()}
+    rejected=receipts.filter(status=ElectronicReceipt.Status.REJECTED)
+    uncertain=receipts.filter(status=ElectronicReceipt.Status.UNCERTAIN)
+    summary={"received":total_received,"documented":total_documented,"difference":total_received-total_documented,"taxable":accepted.filter(document_type=39).aggregate(v=Sum("total_amount"))["v"] or 0,"exempt":accepted.filter(document_type=41).aggregate(v=Sum("total_amount"))["v"] or 0,"vat":accepted.aggregate(v=Sum("vat_amount"))["v"] or 0,"pending":sales.exclude(status=Sale.Status.DOCUMENTED).count(),"accepted":accepted.count(),"rejected":rejected.count(),"uncertain":uncertain.count(),"historical_incomplete":sales.filter(reconciliation_status=Sale.ReconciliationStatus.MISSING_PAYMENT_DATA).count()}
+    exception_filter=request.GET.get("exception","")
+    exception_labels={"pending":"Pendientes","rejected":"Rechazadas","uncertain":"Inciertas","historical_incomplete":"Históricas incompletas"}
+    if exception_filter=="pending":
+        sales=sales.exclude(status=Sale.Status.DOCUMENTED)
+    elif exception_filter=="rejected":
+        sales=Sale.objects.filter(organization=org,receipts__in=rejected).prefetch_related("payments","receipts").distinct()
+    elif exception_filter=="uncertain":
+        sales=Sale.objects.filter(organization=org,receipts__in=uncertain).prefetch_related("payments","receipts").distinct()
+    elif exception_filter=="historical_incomplete":
+        sales=sales.filter(reconciliation_status=Sale.ReconciliationStatus.MISSING_PAYMENT_DATA)
+    else:
+        exception_filter=""
     close=MonthlyClose.objects.filter(organization=org,period=month).order_by("-version").first()
     role=None if request.user.is_platform_admin else OrganizationMembership.objects.filter(organization=org,user=request.user,is_active=True).values_list("role",flat=True).first()
-    return render(request,"sales/dashboard.html",{"organization":org,"period":month,"sales":sales,"summary":summary,"close":close,"can_write":request.user.is_platform_admin or role in WRITE_ROLES,"can_import":request.user.is_platform_admin or role in IMPORT_ROLES,"can_close":request.user.is_platform_admin or role in CLOSE_ROLES,"can_admin":request.user.is_platform_admin or role==OrganizationMembership.Role.ORGANIZATION_ADMIN,"is_platform_admin":request.user.is_platform_admin})
+    return render(request,"sales/dashboard.html",{"organization":org,"period":month,"sales":sales,"summary":summary,"close":close,"exception_filter":exception_filter,"exception_filter_label":exception_labels.get(exception_filter),"can_write":request.user.is_platform_admin or role in WRITE_ROLES,"can_import":request.user.is_platform_admin or role in IMPORT_ROLES,"can_close":request.user.is_platform_admin or role in CLOSE_ROLES,"can_admin":request.user.is_platform_admin or role==OrganizationMembership.Role.ORGANIZATION_ADMIN,"is_platform_admin":request.user.is_platform_admin})
 
 @login_required
 @require_http_methods(["GET","POST"])

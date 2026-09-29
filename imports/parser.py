@@ -4,12 +4,19 @@ import io
 import json
 import re
 import unicodedata
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
+from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
+
 PARSER_VERSION = "cashbook_csv_v1"
+XLSX_PARSER_VERSION = "cashbook_xlsx_v1"
 MAX_FILE_SIZE = 2 * 1024 * 1024
+MAX_XLSX_FILE_SIZE = 10 * 1024 * 1024
 MAX_ROWS = 500
+MAX_XLSX_SHEET_ROWS = 5000
 
 
 class CsvImportError(ValueError):
@@ -40,9 +47,26 @@ def parse_clp(value):
     return int(cleaned)
 
 
+def parse_xlsx_clp(value):
+    if value in (None, ""):
+        return 0
+    if isinstance(value, bool):
+        raise CsvImportError(f"Monto CLP inválido: {value}")
+    if isinstance(value, (int, float, Decimal)):
+        try:
+            return int(Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        except InvalidOperation as exc:
+            raise CsvImportError(f"Monto CLP inválido: {value}") from exc
+    return parse_clp(value)
+
+
 def parse_chilean_date(value):
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
     raw = str(value or "").strip()
-    for fmt in ("%d/%m/%Y", "%d-%m-%Y"):
+    for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d", "%Y-%m"):
         try:
             return datetime.strptime(raw, fmt).date()
         except ValueError:
@@ -121,10 +145,217 @@ HEADER_ALIASES = {
     "afecta no afecta": "classification",
     "fecha de operacion": "issue_date",
     "detalle": "detail",
+    "glosa de operacion": "detail",
     "monto neto": "source_net",
     "monto iva": "source_vat",
     "monto total": "source_total",
 }
+
+
+def _json_value(value):
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    return value
+
+
+def _xlsx_original_dict(headers, values):
+    result = {}
+    for index, value in enumerate(values):
+        header = str(headers[index] or "").strip() if index < len(headers) else ""
+        result[header or f"_column_{index + 1}"] = _json_value(value)
+    return result
+
+
+def _xlsx_money(source_net, source_vat, source_total, classification):
+    net_value = parse_xlsx_clp(source_net)
+    vat_value = parse_xlsx_clp(source_vat)
+    total_value = parse_xlsx_clp(source_total)
+    warnings = []
+    if classification == "EXEMPT":
+        gross = max(net_value, total_value)
+        if gross <= 0:
+            raise CsvImportError("El total exento debe ser mayor que cero.")
+        if vat_value:
+            warnings.append("La fila exenta contenía IVA en la planilla; se normalizó a IVA cero.")
+        return gross, 0, gross, "EXEMPT_NORMALIZED", warnings
+    net, vat, total, mode = _normalize_money(
+        str(net_value), str(vat_value), str(total_value), classification
+    )
+    return net, vat, total, mode, warnings
+
+
+def _xlsx_metadata(sheet, label):
+    wanted = normalize_text(label)
+    for row in sheet.iter_rows(min_row=1, max_row=min(sheet.max_row, 10), values_only=True):
+        for index, value in enumerate(row):
+            if normalize_text(value) == wanted:
+                for candidate in row[index + 1 :]:
+                    if candidate not in (None, ""):
+                        return candidate
+    return None
+
+
+def _xlsx_header(sheet):
+    for row_number, row in enumerate(
+        sheet.iter_rows(min_row=1, max_row=min(sheet.max_row, 30), values_only=True), start=1
+    ):
+        candidate = {
+            HEADER_ALIASES.get(normalize_text(value)): position
+            for position, value in enumerate(row)
+            if HEADER_ALIASES.get(normalize_text(value))
+        }
+        required = (
+            "correlative", "folio", "classification", "issue_date", "detail",
+            "source_net", "source_vat", "source_total",
+        )
+        if all(key in candidate for key in required):
+            return row_number, list(row), candidate
+    return None, [], {}
+
+
+def parse_cashbook_xlsx(content: bytes, *, expected_period: date):
+    if not content:
+        raise CsvImportError("El archivo está vacío.")
+    if len(content) > MAX_XLSX_FILE_SIZE:
+        raise CsvImportError("El archivo XLSX supera el límite de 10 MiB.")
+    try:
+        workbook = load_workbook(io.BytesIO(content), read_only=False, data_only=True)
+    except (InvalidFileException, OSError, ValueError, KeyError) as exc:
+        raise CsvImportError("No se pudo leer el archivo XLSX.") from exc
+    parsed = ParsedImport(file_hash=hashlib.sha256(content).hexdigest(), file_size=len(content))
+    expected_period = expected_period.replace(day=1)
+    candidates = []
+    for sheet in workbook.worksheets:
+        period_value = _xlsx_metadata(sheet, "Periodo") or _xlsx_metadata(sheet, "Período")
+        try:
+            sheet_period = parse_chilean_date(period_value).replace(day=1)
+        except CsvImportError:
+            continue
+        if sheet_period == expected_period:
+            candidates.append(sheet)
+    if not candidates:
+        parsed.errors.append(f"No se encontró una hoja para el período {expected_period:%Y-%m}.")
+        return parsed
+    if len(candidates) > 1:
+        parsed.errors.append(f"Hay más de una hoja para el período {expected_period:%Y-%m}.")
+        return parsed
+    sheet = candidates[0]
+    parsed.period = expected_period
+    parsed.taxpayer_tax_id = str(_xlsx_metadata(sheet, "RUT") or "").strip()
+    parsed.taxpayer_name = str(_xlsx_metadata(sheet, "Razón Social") or "").strip()
+    header_line, headers, header_map = _xlsx_header(sheet)
+    if not header_line:
+        parsed.errors.append("No se encontró la cabecera versionada del libro de caja.")
+        return parsed
+    parsed.header_line = header_line
+    if sheet.max_row - header_line > MAX_XLSX_SHEET_ROWS:
+        raise CsvImportError(
+            f"La hoja supera el límite técnico de {MAX_XLSX_SHEET_ROWS} filas."
+        )
+    footer_found = False
+    for line_number in range(header_line + 1, sheet.max_row + 1):
+        values = [sheet.cell(line_number, column + 1).value for column in range(sheet.max_column)]
+        original = _xlsx_original_dict(headers, values)
+        normalized_values = {normalize_text(value) for value in values if value not in (None, "")}
+        footer_labels = " ".join(normalized_values)
+        if any(label in footer_labels for label in ("iva debito fiscal", "retencion segunda categoria", "ppm")):
+            parsed.rows.append(ParsedRow(line_number, original, status="IGNORED", warnings=["Campo tributario mensual, no es una operación."]))
+            continue
+        folio_raw = values[header_map["folio"]] if header_map["folio"] < len(values) else None
+        correlative = values[header_map["correlative"]] if header_map["correlative"] < len(values) else None
+        if "total" in normalized_values:
+            footer_found = True
+            parsed.rows.append(ParsedRow(line_number, original, status="IGNORED", warnings=["Fila de totales."]))
+            continue
+        if folio_raw in (None, "", 0, 0.0, "0"):
+            reason = "Fila vacía o de plantilla." if not any(value not in (None, "", 0, 0.0) for value in values) or correlative else "Fila de plantilla sin documento."
+            parsed.rows.append(ParsedRow(line_number, original, status="IGNORED", warnings=[reason]))
+            continue
+        operation_index = header_map.get("operation_type")
+        if operation_index is not None and normalize_text(values[operation_index]) != "ingreso":
+            parsed.rows.append(
+                ParsedRow(
+                    line_number,
+                    original,
+                    status="IGNORED",
+                    warnings=["Fila auxiliar, no es una operación de ingreso."],
+                )
+            )
+            continue
+        row_result = ParsedRow(line_number, original)
+        try:
+            folio_decimal = Decimal(str(folio_raw))
+            if folio_decimal != folio_decimal.to_integral_value() or folio_decimal <= 0:
+                raise CsvImportError("El folio debe ser un entero positivo.")
+            folio = int(folio_decimal)
+            classification_text = normalize_text(values[header_map["classification"]])
+            if classification_text == "afecta":
+                classification, document_type = "TAXABLE", 39
+            elif classification_text in {"exenta", "no afecta", "no afecta o exenta"}:
+                classification, document_type = "EXEMPT", 41
+            else:
+                raise CsvImportError("Clasificación afecta/exenta desconocida.")
+            issue_date = parse_chilean_date(values[header_map["issue_date"]])
+            detail_parts = []
+            detail_index = header_map["detail"]
+            if detail_index > 0 and normalize_text(headers[detail_index - 1]).startswith("column"):
+                detail_parts.append(str(values[detail_index - 1] or "").strip())
+            detail_parts.append(str(values[detail_index] or "").strip())
+            detail = " ".join(part for part in detail_parts if part).strip()
+            net, vat, total, mode, money_warnings = _xlsx_money(
+                values[header_map["source_net"]],
+                values[header_map["source_vat"]],
+                values[header_map["source_total"]],
+                classification,
+            )
+            if not detail:
+                raise CsvImportError("El detalle histórico está vacío.")
+            unnamed_values = [
+                str(value).strip()
+                for index, value in enumerate(values)
+                if value not in (None, "")
+                and (index >= len(headers) or not str(headers[index] or "").strip())
+            ]
+            observation = unnamed_values[-1] if unnamed_values else ""
+            normalized = {
+                "correlative": str(correlative or ""),
+                "folio": folio,
+                "document_type": document_type,
+                "classification": classification,
+                "issue_date": issue_date.isoformat(),
+                "detail": detail,
+                "historical_observation": observation,
+                "historical_issuer": str(values[header_map.get("historical_issuer", -1)] or "").strip() if header_map.get("historical_issuer") is not None else "",
+                "net_amount": net,
+                "vat_amount": vat,
+                "total_amount": total,
+                "money_layout": mode,
+                "source_sheet": sheet.title,
+            }
+            row_result.classification = classification
+            row_result.normalized = normalized
+            row_result.warnings.extend(money_warnings)
+            if mode == "HISTORICAL_INVERTED":
+                row_result.warnings.append("Columnas Monto Neto y Monto Total históricamente invertidas; valores normalizados.")
+            row_result.warnings.append("Pago no informado: no se creará un Payment.")
+            if detail.lstrip().startswith(("=", "+", "-", "@")):
+                row_result.warnings.append("Detalle con prefijo de fórmula; se neutralizará al exportar.")
+            fingerprint_payload = {
+                key: normalized[key]
+                for key in ("folio", "document_type", "classification", "issue_date", "detail", "net_amount", "vat_amount", "total_amount")
+            }
+            row_result.fingerprint = hashlib.sha256(
+                json.dumps(fingerprint_payload, sort_keys=True, ensure_ascii=False).encode()
+            ).hexdigest()
+        except (CsvImportError, InvalidOperation, ValueError) as exc:
+            row_result.status = "ERROR"
+            row_result.errors.append(str(exc))
+        parsed.rows.append(row_result)
+    if len(parsed.operation_rows) > MAX_ROWS:
+        raise CsvImportError(f"La hoja supera el límite de {MAX_ROWS} operaciones.")
+    if not footer_found:
+        parsed.warnings.append("La hoja no contiene una fila de totales; se usarán los totales calculados.")
+    return parsed
 
 
 def _metadata_value(rows, label):
@@ -159,9 +390,10 @@ def parse_cashbook_csv(content: bytes):
         raise CsvImportError("El archivo debe estar codificado en UTF-8.") from exc
     try:
         dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;")
-    except csv.Error as exc:
-        raise CsvImportError("No se pudo reconocer el delimitador CSV.") from exc
-    rows = list(csv.reader(io.StringIO(text, newline=""), dialect))
+        rows = list(csv.reader(io.StringIO(text, newline=""), dialect))
+    except csv.Error:
+        delimiter = ";" if text[:4096].count(";") > text[:4096].count(",") else ","
+        rows = list(csv.reader(io.StringIO(text, newline=""), delimiter=delimiter))
     if len(rows) > MAX_ROWS:
         raise CsvImportError(f"El archivo supera el límite de {MAX_ROWS} filas.")
     parsed = ParsedImport(file_hash=hashlib.sha256(content).hexdigest(), file_size=len(content))

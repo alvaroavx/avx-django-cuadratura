@@ -7,7 +7,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 from audit.services import record_event
 from organizations.access import IMPORT_ROLES, authorized_organization
 from reports.models import MonthlyClose
-from .forms import CsvUploadForm
+from .forms import CashbookUploadForm
 from .models import ImportBatch, ImportRow
 from .services import commit_batch, create_preview_batch
 
@@ -41,7 +41,7 @@ def batch_create(request, organization_id, period):
     closed = MonthlyClose.objects.filter(
         organization=organization, period=month, status=MonthlyClose.Status.CLOSED
     ).exists()
-    form = CsvUploadForm(request.POST or None, request.FILES or None)
+    form = CashbookUploadForm(request.POST or None, request.FILES or None)
     if request.method == "POST" and form.is_valid():
         try:
             batch, created = create_preview_batch(

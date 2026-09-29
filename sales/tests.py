@@ -103,7 +103,57 @@ class AuthorizationWebTests(TestCase):
         self.assertContains(response,"Contribuyente activo")
         self.assertContains(response,"aria-current=\"page\"")
         self.assertContains(response,"Aún no hay operaciones en este período")
-        self.assertContains(response,"Importar CSV")
+        self.assertContains(response,"Importar libro de caja")
+
+    def test_period_navigation_has_previous_next_and_selector(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("organization-period", args=[self.org_a.id, "2026-07"]))
+        self.assertContains(
+            response,
+            reverse("organization-period", args=[self.org_a.id, "2026-06"]),
+        )
+        self.assertContains(
+            response,
+            reverse("organization-period", args=[self.org_a.id, "2026-08"]),
+        )
+        self.assertContains(response, 'name="period"')
+        self.assertContains(response, '<option value="2026-07" selected>Julio 2026</option>', html=True)
+
+    def test_period_selector_redirects_and_preserves_tenant_authorization(self):
+        self.client.force_login(self.user)
+        response = self.client.get(
+            reverse("organization-period-select", args=[self.org_a.id]),
+            {"period": "2025-11"},
+        )
+        self.assertRedirects(
+            response,
+            reverse("organization-period", args=[self.org_a.id, "2025-11"]),
+            fetch_redirect_response=False,
+        )
+        forbidden = self.client.get(
+            reverse("organization-period-select", args=[self.org_b.id]),
+            {"period": "2025-11"},
+        )
+        self.assertEqual(forbidden.status_code, 403)
+
+    def test_period_selector_rejects_invalid_value(self):
+        self.client.force_login(self.user)
+        response = self.client.get(
+            reverse("organization-period-select", args=[self.org_a.id]),
+            {"period": "not-a-period"},
+        )
+        self.assertRedirects(
+            response,
+            reverse("organization-period-current", args=[self.org_a.id]),
+            fetch_redirect_response=False,
+        )
+
+    def test_period_navigation_is_available_outside_dashboard(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("import-create", args=[self.org_a.id, "2026-07"]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="period-navigation"')
+        self.assertContains(response, '<option value="2026-07" selected>Julio 2026</option>', html=True)
 
     def test_platform_admin_controlled_user_creation_hashes_password_and_assigns_tenant(self):
         admin=User.objects.create_user("platform",password="Admin-safe-987!",platform_role="PLATFORM_ADMIN")

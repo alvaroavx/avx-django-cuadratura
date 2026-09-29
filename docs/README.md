@@ -8,6 +8,7 @@
 | Revisar aislamiento y datos sensibles | [seguridad](security.md) → ADR de `docs/adr/` |
 | Modificar importaciones | ADR-0004, `imports/`, sus parser/services/tests y el contrato de archivo privado |
 | Modificar cierre o exportación | [libro mensual](monthly-book.md), `reports/`, `audit/` y pruebas de reportes |
+| Revisar pagos de alumnos vinculados y honorarios pendientes | [importación de Finanzas Elementos](finanzas-elementos-import.md) |
 | Preparar ejecución local | [README raíz](../README.md), `.env.example`, `compose.yaml`, `config/settings.py` |
 
 ## Arquitectura verificable

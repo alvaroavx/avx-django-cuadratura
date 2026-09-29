@@ -9,7 +9,14 @@ from documents.models import ElectronicReceipt
 from reports.models import MonthlyClose
 from sales.models import Sale, SaleLine
 from .models import ImportBatch, ImportRow
-from .parser import PARSER_VERSION, normalize_tax_id, parse_cashbook_csv
+from .parser import (
+    CsvImportError,
+    PARSER_VERSION,
+    XLSX_PARSER_VERSION,
+    normalize_tax_id,
+    parse_cashbook_csv,
+    parse_cashbook_xlsx,
+)
 
 
 def _is_period_closed(organization, period):
@@ -23,6 +30,7 @@ def classify_import(parsed, *, organization, expected_period):
         parsed.errors.append("El RUT de la cabecera no corresponde a la organización activa.")
     if parsed.period != expected_period:
         parsed.errors.append("El período de la cabecera no corresponde al período activo.")
+    seen_documents = {}
     for row in parsed.rows:
         if row.status != ImportRow.Status.NEW:
             continue
@@ -41,6 +49,19 @@ def classify_import(parsed, *, organization, expected_period):
             row.status = ImportRow.Status.ERROR
             row.errors.append("DTE 41 no está habilitado para esta organización.")
             continue
+        document_key = (document_type, normalized["folio"])
+        previous = seen_documents.get(document_key)
+        if previous:
+            row.status = ImportRow.Status.CONFLICT
+            row.errors.append(
+                f"El folio se repite en las líneas {previous.line_number} y {row.line_number}."
+            )
+            previous.status = ImportRow.Status.CONFLICT
+            previous.errors.append(
+                f"El folio se repite en las líneas {previous.line_number} y {row.line_number}."
+            )
+            continue
+        seen_documents[document_key] = row
         receipt = ElectronicReceipt.objects.filter(
             organization=organization, document_type=document_type, folio=normalized["folio"]
         ).select_related("sale").first()
@@ -67,8 +88,11 @@ def classify_import(parsed, *, organization, expected_period):
     return parsed
 
 
-def analyze_content(content, *, organization, expected_period):
-    parsed = parse_cashbook_csv(content)
+def analyze_content(content, *, organization, expected_period, extension=".csv"):
+    if extension == ".xlsx":
+        parsed = parse_cashbook_xlsx(content, expected_period=expected_period)
+    else:
+        parsed = parse_cashbook_csv(content)
     return classify_import(parsed, organization=organization, expected_period=expected_period)
 
 
@@ -97,10 +121,19 @@ def create_preview_batch(*, organization, expected_period, actor, uploaded_file)
     if _is_period_closed(organization, expected_period):
         raise ValidationError("El período está cerrado; debe reabrirlo antes de importar.")
     original_name = Path(uploaded_file.name).name[:255]
-    if Path(original_name).suffix.lower() != ".csv":
-        raise ValidationError("Solo se admiten archivos con extensión .csv.")
+    extension = Path(original_name).suffix.lower()
+    if extension not in {".csv", ".xlsx"}:
+        raise ValidationError("Solo se admiten archivos con extensión .csv o .xlsx.")
     content = uploaded_file.read()
-    parsed = analyze_content(content, organization=organization, expected_period=expected_period)
+    try:
+        parsed = analyze_content(
+            content,
+            organization=organization,
+            expected_period=expected_period,
+            extension=extension,
+        )
+    except CsvImportError as exc:
+        raise ValidationError(str(exc)) from exc
     blocked = bool(parsed.errors)
     values = _batch_counts(parsed)
     try:
@@ -108,9 +141,9 @@ def create_preview_batch(*, organization, expected_period, actor, uploaded_file)
             batch = ImportBatch.objects.create(
                 organization=organization,
                 period=expected_period,
-                parser_version=PARSER_VERSION,
+                parser_version=XLSX_PARSER_VERSION if extension == ".xlsx" else PARSER_VERSION,
                 original_filename=original_name,
-                source_file=f"private/imports/{timezone.now():%Y/%m}/pending.csv",
+                source_file=f"private/imports/{timezone.now():%Y/%m}/pending{extension}",
                 file_hash=parsed.file_hash,
                 file_size=parsed.file_size,
                 uploaded_by=actor,
@@ -122,7 +155,7 @@ def create_preview_batch(*, organization, expected_period, actor, uploaded_file)
                 validated_at=timezone.now(),
                 **values,
             )
-            batch.source_file.save(f"{batch.id}.csv", ContentFile(content), save=True)
+            batch.source_file.save(f"{batch.id}{extension}", ContentFile(content), save=True)
             ImportRow.objects.bulk_create(
                 [
                     ImportRow(
@@ -140,7 +173,11 @@ def create_preview_batch(*, organization, expected_period, actor, uploaded_file)
                 ]
             )
     except IntegrityError:
-        existing = ImportBatch.objects.get(organization=organization, file_hash=parsed.file_hash)
+        existing = ImportBatch.objects.get(
+            organization=organization,
+            period=expected_period,
+            file_hash=parsed.file_hash,
+        )
         record_event(
             organization=organization,
             actor=actor,

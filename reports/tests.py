@@ -9,6 +9,7 @@ from audit.models import AuditEvent
 from organizations.models import TaxpayerOrganization
 from sales.services import register_manual_operation, register_manual_receipt
 from sii.gateway import DisabledSiiGateway, SiiDisabledError
+from imports.parser import parse_cashbook_xlsx
 from .services import close_month, generate_workbook, reopen_month
 
 class ReportingTests(TestCase):
@@ -21,9 +22,15 @@ class ReportingTests(TestCase):
     def test_provisional_export_has_required_sheets_totals_and_manual_fields(self):
         content,totals,exceptions=generate_workbook(self.org,date(2026,7,1),withholding=25,ppm=30)
         wb=load_workbook(BytesIO(content),data_only=True)
-        self.assertEqual(wb.sheetnames,["Libro provisional","Excepciones"]); self.assertEqual(totals,[1000,190,1190]); self.assertFalse(exceptions)
-        values=[cell.value for row in wb["Libro provisional"] for cell in row]
-        self.assertIn("Retención segunda categoría (manual)",values); self.assertIn("PPM (manual)",values)
+        self.assertEqual(wb.sheetnames,["Julio 2026","Excepciones"]); self.assertEqual(totals,[1000,190,1190]); self.assertFalse(exceptions)
+        values=[cell.value for row in wb["Julio 2026"] for cell in row]
+        self.assertIn("Retención segunda categoría",values); self.assertIn("PPM",values)
+        self.assertEqual(wb["Julio 2026"]["B6"].value,"N° Correlativo")
+        self.assertEqual(wb["Julio 2026"]["L7"].value,1190)
+        parsed=parse_cashbook_xlsx(content,expected_period=date(2026,7,1))
+        self.assertEqual(parsed.errors,[])
+        self.assertEqual(len(parsed.valid_rows),1)
+        self.assertEqual(parsed.valid_rows[0].normalized["total_amount"],1190)
 
     def test_close_hash_audit_and_reopen_reason(self):
         close=close_month(organization=self.org,period=date(2026,7,1),actor=self.user,withholding=25,ppm=30)
@@ -41,4 +48,3 @@ class ReportingTests(TestCase):
         secret="private-secret-value"
         with self.assertRaises(SiiDisabledError) as ctx: DisabledSiiGateway().submit(receipt_id=secret)
         self.assertNotIn(secret,str(ctx.exception)); self.assertIn("deshabilitada",str(ctx.exception))
-

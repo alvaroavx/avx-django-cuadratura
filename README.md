@@ -16,7 +16,7 @@ Contiene un monolito Django server-rendered, PostgreSQL, aplicaciones de cuentas
 
 - Administrar usuarios, organizaciones, membresías y roles.
 - Registrar ventas, pagos y documentos DTE 39/41 configurables.
-- Importar información histórica mediante CSV con dry-run y confirmación atómica.
+- Importar información histórica mediante XLSX o CSV con previsualización y confirmación atómica.
 - Conciliar operaciones, construir el libro mensual y exportar un XLSX provisional.
 - Cerrar y reabrir períodos con trazabilidad y auditoría append-only.
 - Mantener un límite explícito para SII: el gateway falla de forma cerrada y no emite documentos reales.
@@ -33,7 +33,7 @@ Las oportunidades centrales son validar el libro mensual con la contraparte cont
 
 ## Estado del primer corte
 
-Incluye Django server-rendered, usuario propio, organizaciones y membresías con roles fijos, captura manual transaccional, importación histórica CSV con dry-run y commit atómico, DTE 39/41 configurables, conciliación básica, cierres versionados con archivo y SHA-256, reapertura auditada, exportación XLSX provisional y un gateway SII que falla de forma cerrada. **No existe emisión SII real ni API para Elemental.**
+Incluye Django server-rendered, usuario propio, organizaciones y membresías con roles fijos, captura manual transaccional, importación histórica XLSX/CSV con previsualización y commit atómico, DTE 39/41 configurables, conciliación básica, cierres versionados con archivo y SHA-256, reapertura auditada, exportación XLSX reimportable y un gateway SII que falla de forma cerrada. **No existe emisión SII real ni API para Elemental.**
 
 La exportación es provisional. La referencia apareció durante la ejecución como `docs/Libro Caja Espacio Elementos.xlsx` (no en la ruta solicitada) y se contrastó solo en estructura: sus columnas históricas coinciden con correlativo, operación, documento, emisor, clasificación, fecha, detalle y montos. No hay confirmación de cuál hoja constituye el mes patrón corregido por la contadora. Tanto `local/` como `docs/*.xlsx` están ignorados por Git.
 
@@ -60,6 +60,23 @@ Si PostgreSQL ya existe, cree la base/usuario indicados en `.env` y omita Compos
 
 La primera organización, incluida Espacio Cultural y Deportivo Elementos SpA, se crea en **Nuevo contribuyente** después de iniciar sesión como `PLATFORM_ADMIN`/superusuario. No hay tenants en migraciones ni seeders.
 
+### Acceso local y cambio de contraseña
+
+La pantalla `/ingresar/` usa el **nombre de usuario**, no el correo electrónico. Si el acceso falla, compruebe primero que PostgreSQL esté iniciado; en una instalación local administrada por systemd:
+
+```bash
+systemctl start postgresql@18-main.service
+```
+
+Para cambiar la contraseña de una cuenta existente sin escribirla en el historial de la terminal ni compartirla con terceros:
+
+```bash
+set -a; source .env; set +a
+.venv/bin/python manage.py changepassword NOMBRE_DE_USUARIO
+```
+
+El comando solicita la nueva contraseña dos veces sin mostrarla en pantalla. No agregue contraseñas al repositorio, archivos de documentación, logs ni fixtures.
+
 ## Pruebas
 
 Las pruebas requieren PostgreSQL real; SQLite no es compatible ni está configurado:
@@ -78,7 +95,7 @@ git diff --check
 - `organizations`: contribuyentes, membresías e invitaciones.
 - `sales`, `payments`, `documents`: captura, dinero, DTE 39/41 y estados.
 - `reports`: espacio mensual, XLSX provisional, cierre y reapertura.
-- `imports`: parser versionado, lotes privados, previsualización y confirmación histórica.
+- `imports`: parsers XLSX/CSV versionados, lotes privados, previsualización y confirmación histórica.
 - `sii`: contrato, adaptador deshabilitado y fake de pruebas.
 - `audit`: eventos append-only.
 - `integrations`: límite reservado para la futura API, sin modelos activos.

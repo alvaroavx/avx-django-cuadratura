@@ -1,0 +1,19 @@
+<nav class="period-navigation" aria-label="Navegación por períodos">
+  <a class="period-step period-step-previous" href="{% url 'organization-period' organization.id previous_period %}" rel="prev">
+    <span class="period-step-icon" aria-hidden="true">←</span>
+    <span><small>Mes anterior</small><strong>{{ previous_period_label }}</strong></span>
+  </a>
+  <form method="get" action="{% url 'organization-period-select' organization.id %}" class="period-selector">
+    <label for="period-select">Período activo</label>
+    <div class="period-selector-controls">
+      <span class="period-select-wrap"><select id="period-select" name="period">
+        {% for choice in period_choices %}<option value="{{ choice.value }}"{% if choice.selected %} selected{% endif %}>{{ choice.label }}</option>{% endfor %}
+      </select></span>
+      <button type="submit">Ver</button>
+    </div>
+  </form>
+  <a class="period-step period-step-next" href="{% url 'organization-period' organization.id next_period %}" rel="next">
+    <span><small>Mes siguiente</small><strong>{{ next_period_label }}</strong></span>
+    <span class="period-step-icon" aria-hidden="true">→</span>
+  </a>
+</nav>

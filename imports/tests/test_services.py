@@ -152,8 +152,7 @@ class ImportServiceTests(TestCase):
         commit_batch(batch_id=batch.id, organization=self.org, actor=self.user)
         workbook_content, _, _ = generate_workbook(self.org, self.period)
         workbook = load_workbook(__import__("io").BytesIO(workbook_content), data_only=False)
-        details = [cell.value for cell in workbook["Libro provisional"][2]]
-        self.assertIn("'=2+2", details)
+        self.assertEqual(workbook["Julio 2026"]["I7"].value, "'=2+2")
 
     def test_web_permissions_isolation_private_file_and_blocked_preview_survives(self):
         operator = User.objects.create_user("operator", password="test-password")
