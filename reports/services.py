@@ -1,16 +1,18 @@
 import hashlib
+import re
 from io import BytesIO
 from django.core.files.base import ContentFile
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Max, Prefetch
 from django.utils import timezone
+from django.utils.text import slugify
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from audit.services import record_event
 from documents.models import ElectronicReceipt
-from sales.models import Sale
+from sales.models import Sale, SaleLine
 from .models import MonthlyClose
 
 HEADERS = [
@@ -32,6 +34,15 @@ MONTH_NAMES = (
     "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
 )
 
+RECEIPT_EXPORT_FILTERS = {
+    "pending": "Pendientes",
+    "rejected": "Rechazadas",
+    "uncertain": "Inciertas",
+    "historical_incomplete": "Históricas incompletas",
+}
+
+RECEIPT_EXPORT_WIDTHS = (16, 20, 20, 28, 18, 22, 20, 52, 16, 14, 16)
+
 def spreadsheet_safe(value):
     if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
         return "'" + value
@@ -39,6 +50,115 @@ def spreadsheet_safe(value):
 
 def period_receipts(organization, period):
     return ElectronicReceipt.objects.filter(organization=organization, status=ElectronicReceipt.Status.ACCEPTED, tax_issue_date__year=period.year, tax_issue_date__month=period.month).select_related("sale").order_by("tax_issue_date", "folio")
+
+
+def normalize_receipt_export_filter(value):
+    return value if value in RECEIPT_EXPORT_FILTERS else ""
+
+
+def receipt_export_queryset(organization, period, exception_filter=""):
+    exception_filter = normalize_receipt_export_filter(exception_filter)
+    receipts = ElectronicReceipt.objects.filter(
+        organization=organization,
+        status=ElectronicReceipt.Status.ACCEPTED,
+        tax_issue_date__year=period.year,
+        tax_issue_date__month=period.month,
+    )
+    if exception_filter == "pending":
+        receipts = receipts.exclude(sale__status=Sale.Status.DOCUMENTED)
+    elif exception_filter == "rejected":
+        receipts = receipts.filter(status=ElectronicReceipt.Status.REJECTED)
+    elif exception_filter == "uncertain":
+        receipts = receipts.filter(status=ElectronicReceipt.Status.UNCERTAIN)
+    elif exception_filter == "historical_incomplete":
+        receipts = receipts.filter(
+            sale__reconciliation_status=Sale.ReconciliationStatus.MISSING_PAYMENT_DATA
+        )
+    return receipts.select_related("sale").prefetch_related(
+        Prefetch(
+            "sale__lines",
+            queryset=SaleLine.objects.order_by("id"),
+            to_attr="export_lines",
+        )
+    ).order_by("tax_issue_date", "document_type", "folio", "id")
+
+
+def _receipt_detail(receipt):
+    sale_detail = re.sub(r"[\t\r\n]+", " ", receipt.sale.detail).strip()
+    details = [sale_detail] if sale_detail else []
+    for line in getattr(receipt.sale, "export_lines", ()):
+        detail = re.sub(r"[\t\r\n]+", " ", line.description).strip()
+        if detail and detail not in details:
+            details.append(detail)
+    return "; ".join(details)
+
+
+def prepare_receipt_export(organization, period, exception_filter=""):
+    exception_filter = normalize_receipt_export_filter(exception_filter)
+    rows = []
+    for index, receipt in enumerate(
+        receipt_export_queryset(organization, period, exception_filter), start=1
+    ):
+        rows.append(
+            [
+                index,
+                "Ingreso",
+                str(receipt.folio),
+                receipt.get_document_type_display(),
+                organization.tax_id,
+                receipt.sale.get_tax_classification_display(),
+                receipt.tax_issue_date,
+                _receipt_detail(receipt),
+                receipt.net_amount,
+                receipt.vat_amount,
+                receipt.total_amount,
+            ]
+        )
+    excluded = ElectronicReceipt.objects.filter(
+        organization=organization,
+        tax_issue_date__year=period.year,
+        tax_issue_date__month=period.month,
+    ).exclude(status=ElectronicReceipt.Status.ACCEPTED).count()
+    return {
+        "headers": HEADERS,
+        "rows": rows,
+        "filter": exception_filter,
+        "filter_label": RECEIPT_EXPORT_FILTERS.get(exception_filter, "Sin filtro de excepciones"),
+        "excluded_count": excluded,
+    }
+
+
+def generate_receipt_export_workbook(organization, period, exception_filter=""):
+    export = prepare_receipt_export(organization, period, exception_filter)
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Boletas"
+    sheet.append(export["headers"])
+    for row in export["rows"]:
+        sheet.append([spreadsheet_safe(value) for value in row])
+    header_fill = PatternFill("solid", fgColor="1F4E78")
+    for cell in sheet[1]:
+        cell.fill = header_fill
+        cell.font = Font(color="FFFFFF", bold=True)
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    for row_number in range(2, sheet.max_row + 1):
+        sheet.cell(row_number, 3).number_format = "@"
+        sheet.cell(row_number, 5).number_format = "@"
+        sheet.cell(row_number, 7).number_format = "dd/mm/yyyy"
+        for column in (9, 10, 11):
+            sheet.cell(row_number, column).number_format = "#,##0"
+    for column, width in enumerate(RECEIPT_EXPORT_WIDTHS, start=1):
+        sheet.column_dimensions[get_column_letter(column)].width = width
+    sheet.freeze_panes = "A2"
+    sheet.auto_filter.ref = f"A1:K{max(1, sheet.max_row)}"
+    output = BytesIO()
+    workbook.save(output)
+    return output.getvalue(), export
+
+
+def receipt_export_filename(organization, period):
+    organization_name = slugify(organization.trade_name or organization.legal_name) or "organizacion"
+    return f"{organization_name}-{period:%Y-%m}-boletas.xlsx"
 
 def generate_workbook(organization, period, withholding=0, ppm=0):
     wb=Workbook(); ws=wb.active; ws.title=f"{MONTH_NAMES[period.month - 1]} {period.year}"

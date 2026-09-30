@@ -14,3 +14,23 @@ Pendiente para declarar conformidad definitiva:
 1. Confirmar con la contadora si requiere conservar fórmulas o estilos adicionales además del contrato de columnas ya soportado.
 2. Confirmar semántica y obligatoriedad del RUT emisor histórico.
 3. Crear una prueba dorada anonimizada y versionable; la planilla personal original permanece fuera de Git.
+
+## Exportación interactiva de boletas registradas
+
+La pantalla mensual permite abrir **Exportar a Excel** y revisar las boletas
+aceptadas del contribuyente y período activos. La grilla permite seleccionar y
+copiar rangos tabulados, copiar el conjunto completo con o sin encabezados y
+descargar las mismas filas como XLSX. Los filtros de excepciones de la pantalla
+se conservan y nunca se exporta solo la porción visible de la tabla.
+
+Esta exportación contiene una fila por `ElectronicReceipt` aceptada, ordenada por
+fecha tributaria, tipo, folio e identificador. `Fecha de Operación` corresponde a
+`tax_issue_date`, no a la creación o importación del registro. `Rut Emisor` es el
+RUT de la organización activa. Las descripciones de varias líneas se consolidan
+en una celda y los montos provienen de la boleta, por lo que no se multiplican por
+líneas ni pagos.
+
+Boletas rechazadas, inciertas, anuladas o todavía en trámite no se presentan como
+ingresos válidos. La vista informa cuántos documentos del período quedaron fuera.
+Copiar o descargar es una operación de lectura: no modifica documentos, no emite
+ante el SII y no cierra el período.

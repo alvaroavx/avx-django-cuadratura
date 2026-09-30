@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% load chilean %}
+{% extends "base.html" %}{% load static chilean %}
 {% block title %}Resumen {{ period|date:"m/Y" }} · Cuadratura{% endblock %}
 {% block breadcrumb %}<li><span>{{ organization.legal_name }}</span></li><li aria-current="page"><span>Resumen {{ period|date:"m/Y" }}</span></li>{% endblock %}
 {% block content %}
@@ -34,7 +34,7 @@
 </section>
 
 <section class="section-block" id="operaciones" aria-labelledby="operations-heading">
-  <div class="section-heading"><div><h2 id="operations-heading">{% if exception_filter_label %}{{ exception_filter_label }}{% else %}Operaciones{% endif %}</h2><p>{% if exception_filter_label %}Registros filtrados para {{ exception_filter_label|lower }}.{% else %}Centro operativo del período.{% endif %}</p></div><div class="page-actions">{% if exception_filter %}<a class="button button-tertiary" href="{% url 'organization-period' organization.id period|date:'Y-m' %}#operaciones">Quitar filtro</a>{% endif %}<span class="record-count">{{ sales|length }} registros</span></div></div>
+  <div class="section-heading"><div><h2 id="operations-heading">{% if exception_filter_label %}{{ exception_filter_label }}{% else %}Operaciones{% endif %}</h2><p>{% if exception_filter_label %}Registros filtrados para {{ exception_filter_label|lower }}.{% else %}Centro operativo del período.{% endif %}</p></div><div class="page-actions"><button class="button button-secondary" type="button" id="open-receipt-export" data-preview-url="{% url 'receipt-export-preview' organization.id period|date:'Y-m' %}{% if exception_filter %}?exception={{ exception_filter|urlencode }}{% endif %}" data-download-url="{% url 'receipt-export-download' organization.id period|date:'Y-m' %}{% if exception_filter %}?exception={{ exception_filter|urlencode }}{% endif %}">Exportar a Excel</button>{% if exception_filter %}<a class="button button-tertiary" href="{% url 'organization-period' organization.id period|date:'Y-m' %}#operaciones">Quitar filtro</a>{% endif %}<span class="record-count">{{ sales|length }} registros</span></div></div>
   <div class="table-wrap" id="boletas"><table><thead><tr><th scope="col">Fecha</th><th scope="col">Detalle</th><th scope="col" class="amount">Total</th><th scope="col">Venta</th><th scope="col">Conciliación</th><th scope="col">Boleta</th></tr></thead><tbody>
     {% for sale in sales %}{% with receipt=sale.receipts.all.0 %}<tr><td>{{ sale.operation_date|date:"d/m/Y" }}</td><td class="detail-cell">{{ sale.detail }}</td><td class="amount">$ {{ sale.total_amount|clp }}</td><td>{{ sale.get_status_display }}</td><td>{% if sale.reconciliation_status == 'RECONCILED' %}<span class="badge badge-success">✓ {{ sale.get_reconciliation_status_display }}</span>{% elif sale.reconciliation_status == 'MISSING_PAYMENT_DATA' %}<span class="badge badge-info">i {{ sale.get_reconciliation_status_display }}</span>{% else %}<span class="badge badge-warning">! {{ sale.get_reconciliation_status_display }}</span>{% endif %}</td><td>{% if receipt %}<span class="badge {% if receipt.status == 'ACCEPTED' %}badge-success{% elif receipt.status == 'REJECTED' %}badge-danger{% elif receipt.status == 'UNCERTAIN' %}badge-warning{% else %}badge-info{% endif %}">{{ receipt.get_status_display }}</span>{% elif can_write and close.status != 'CLOSED' %}<a href="{% url 'manual-receipt' organization.id period|date:'Y-m' sale.id %}">Registrar boleta</a>{% else %}No creada{% endif %}</td></tr>{% endwith %}
     {% empty %}<tr><td colspan="6"><div class="empty-state"><strong>{% if exception_filter %}No hay registros para este filtro.{% else %}Aún no hay operaciones en este período.{% endif %}</strong><span>{% if exception_filter %}Quita el filtro para volver a ver todas las operaciones.{% else %}Registra una operación o importa un archivo CSV.{% endif %}</span></div></td></tr>{% endfor %}
@@ -46,4 +46,38 @@
   {% if can_close %}<section class="action-panel" id="cierres"><h2>Cierre mensual</h2>{% if close.status == 'CLOSED' %}<p><span class="badge badge-success">✓ Período cerrado</span></p><a class="button button-tertiary" href="{% url 'reopen-period' organization.id period|date:'Y-m' close.id %}">Solicitar reapertura</a>{% else %}<p>Revisa excepciones antes de cerrar el período.</p><a class="button button-secondary" href="{% url 'close-period' organization.id period|date:'Y-m' %}">Cerrar período</a>{% endif %}</section>{% endif %}
   {% if can_close %}<section class="action-panel"><h2>Trazabilidad</h2><p>Consulta las acciones realizadas en la organización.</p><a class="button button-tertiary" href="{% url 'audit-list' organization.id %}">Revisar auditoría</a></section>{% endif %}
 </div>
+
+<dialog class="export-dialog" id="receipt-export-dialog" aria-labelledby="receipt-export-title">
+  <div class="export-dialog-header">
+    <div><span class="eyebrow">Boletas registradas</span><h2 id="receipt-export-title">Exportar a Excel</h2></div>
+    <button class="dialog-close" type="button" data-export-close aria-label="Cerrar exportación">×</button>
+  </div>
+  <div class="export-dialog-body">
+    <div class="export-loading" data-export-loading role="status">Preparando boletas…</div>
+    <div class="notice notice-error" data-export-error role="alert" hidden></div>
+    <div data-export-content hidden>
+      <dl class="export-context">
+        <div><dt>Organización</dt><dd data-export-organization></dd></div>
+        <div><dt>Período</dt><dd data-export-period></dd></div>
+        <div><dt>Filtro aplicado</dt><dd data-export-filter></dd></div>
+        <div><dt>Documentos incluidos</dt><dd data-export-count></dd></div>
+      </dl>
+      <p class="inline-guidance" data-export-scope></p>
+      <p class="export-excluded" data-export-excluded hidden></p>
+      <div class="export-actions" aria-label="Acciones de copia y descarga">
+        <button class="button button-secondary" type="button" data-copy-selection>Copiar selección</button>
+        <button class="button button-tertiary" type="button" data-copy-all-headers>Copiar tabla con encabezados</button>
+        <button class="button button-tertiary" type="button" data-copy-all>Copiar tabla sin encabezados</button>
+        <a class="button button-primary" data-export-download href="#">Descargar Excel (.xlsx)</a>
+      </div>
+      <p class="export-feedback" data-export-feedback role="status" aria-live="polite">Selecciona una celda o arrastra para elegir un rango.</p>
+      <div class="export-grid-wrap" data-export-grid-wrap>
+        <table class="export-grid" data-export-grid tabindex="0" role="grid" aria-label="Vista previa de boletas para exportar"></table>
+      </div>
+      <div class="empty-state export-empty" data-export-empty hidden><strong>No hay boletas aceptadas para exportar.</strong><span>Revisa el período o quita el filtro de excepciones.</span></div>
+    </div>
+  </div>
+  <div class="export-dialog-footer"><button class="button button-tertiary" type="button" data-export-close>Volver al listado</button></div>
+</dialog>
 {% endblock %}
+{% block scripts %}<script src="{% static 'js/receipt-export.js' %}?v=20260930-receipt-export" defer></script>{% endblock %}

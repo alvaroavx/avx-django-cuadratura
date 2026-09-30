@@ -2,14 +2,21 @@ from datetime import date
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods
 from audit.models import AuditEvent
 from organizations.access import CLOSE_ROLES, READ_ROLES, authorized_organization
 from .forms import CloseForm, ReopenForm
 from .models import MonthlyClose
-from .services import close_month, generate_workbook, reopen_month
+from .services import (
+    close_month,
+    generate_receipt_export_workbook,
+    generate_workbook,
+    prepare_receipt_export,
+    receipt_export_filename,
+    reopen_month,
+)
 
 def _month(value): return date.fromisoformat(value+"-01")
 
@@ -19,6 +26,50 @@ def provisional_export(request,organization_id,period):
     content,_,_=generate_workbook(org,month)
     response=HttpResponse(content,content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     response["Content-Disposition"]=f'attachment; filename="libro-provisional-{period}.xlsx"'
+    return response
+
+
+@login_required
+def receipt_export_preview(request, organization_id, period):
+    org = authorized_organization(request.user, organization_id, roles=READ_ROLES)
+    month = _month(period)
+    export = prepare_receipt_export(org, month, request.GET.get("exception", ""))
+    rows = [
+        [value.strftime("%d/%m/%Y") if isinstance(value, date) else value for value in row]
+        for row in export["rows"]
+    ]
+    return JsonResponse(
+        {
+            "organization": org.legal_name,
+            "period": month.strftime("%m/%Y"),
+            "headers": export["headers"],
+            "rows": rows,
+            "count": len(rows),
+            "filter": export["filter"],
+            "filter_label": export["filter_label"],
+            "excluded_count": export["excluded_count"],
+            "scope_note": (
+                "Incluye solo boletas aceptadas. Las rechazadas, inciertas, anuladas "
+                "o todavía en trámite no se exportan como ingresos válidos."
+            ),
+        }
+    )
+
+
+@login_required
+def receipt_export_download(request, organization_id, period):
+    org = authorized_organization(request.user, organization_id, roles=READ_ROLES)
+    month = _month(period)
+    content, _export = generate_receipt_export_workbook(
+        org, month, request.GET.get("exception", "")
+    )
+    response = HttpResponse(
+        content,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = (
+        f'attachment; filename="{receipt_export_filename(org, month)}"'
+    )
     return response
 
 @login_required
