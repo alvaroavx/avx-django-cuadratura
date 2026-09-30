@@ -246,7 +246,41 @@ def commit_batch(*, batch_id, organization, actor):
                 organization=organization, origin_system="ELEMENTAL", external_id=data["external_id"]
             ).first()
             if existing:
-                raise ValidationError("La información cambió desde la previsualización; vuelva a cargar el archivo.")
+                existing_payments = list(
+                    Payment.objects.filter(
+                        organization=organization,
+                        origin_system="ELEMENTAL",
+                        external_id__in=[item["external_id"] for item in data["payments"]],
+                    )
+                )
+                identical = (
+                    existing.operation_date.isoformat() == data["operation_date"]
+                    and existing.detail == data["detail"]
+                    and existing.tax_classification == data["classification"]
+                    and existing.net_amount == data["net_amount"]
+                    and existing.vat_amount == data["vat_amount"]
+                    and existing.total_amount == data["total_amount"]
+                    and len(existing_payments) == len(data["payments"])
+                    and all(
+                        any(
+                            payment.external_id == item["external_id"]
+                            and payment.sale_id == existing.id
+                            and payment.payment_date.isoformat() == item["payment_date"]
+                            and payment.amount == item["amount"]
+                            for payment in existing_payments
+                        )
+                        for item in data["payments"]
+                    )
+                )
+                if not identical:
+                    raise ValidationError(
+                        "La información cambió desde la previsualización; vuelva a cargar el archivo."
+                    )
+                row.sale = existing
+                row.payment = existing_payments[0]
+                row.status = ImportRow.Status.ALREADY_IMPORTED
+                row.save(update_fields=["sale", "payment", "status"])
+                continue
             if Payment.objects.filter(
                 organization=organization,
                 origin_system="ELEMENTAL",

@@ -90,6 +90,17 @@ class ElementalV1ImportTests(TestCase):
         sale.refresh_from_db()
         self.assertEqual(sale.status, Sale.Status.DOCUMENTED)
 
+    def test_operation_with_multiple_payments_creates_one_sale(self):
+        payload = self.payload(operation="transaction:multi", payment="payment:multi-1")
+        payload["operations"][0]["payments"] = [
+            {"external_id": "payment:multi-1", "payment_date": "2026-09-03", "amount": 20000, "status": "CONFIRMED", "method": "transferencia", "reference": "A"},
+            {"external_id": "payment:multi-2", "payment_date": "2026-09-10", "amount": 25000, "status": "CONFIRMED", "method": "transferencia", "reference": "B"},
+        ]
+        payload["summary"]["payments"] = 2
+        batch = self.preview(payload)
+        commit_batch(batch_id=batch.id, organization=self.org, actor=self.user)
+        self.assertEqual((Sale.objects.count(), Payment.objects.count()), (1, 2))
+
     def test_new_operation_with_same_date_and_amount_as_elemental_sale_is_new(self):
         first = self.preview(self.payload())
         commit_batch(batch_id=first.id, organization=self.org, actor=self.user)
