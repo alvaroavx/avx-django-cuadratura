@@ -8,6 +8,8 @@ from audit.services import record_event
 from documents.models import ElectronicReceipt
 from reports.models import MonthlyClose
 from sales.models import Sale, SaleLine
+from payments.models import Payment
+from organizations.models import TaxpayerOrganization
 from .models import ImportBatch, ImportRow
 from .parser import (
     CsvImportError,
@@ -17,6 +19,7 @@ from .parser import (
     parse_cashbook_csv,
     parse_cashbook_xlsx,
 )
+from .elemental_v1 import CONTRACT_VERSION, classify_elemental, parse_elemental_json
 
 
 def _is_period_closed(organization, period):
@@ -89,6 +92,9 @@ def classify_import(parsed, *, organization, expected_period):
 
 
 def analyze_content(content, *, organization, expected_period, extension=".csv"):
+    if extension == ".json":
+        parsed = parse_elemental_json(content)
+        return classify_elemental(parsed, organization=organization, expected_period=expected_period)
     if extension == ".xlsx":
         parsed = parse_cashbook_xlsx(content, expected_period=expected_period)
     else:
@@ -122,8 +128,8 @@ def create_preview_batch(*, organization, expected_period, actor, uploaded_file)
         raise ValidationError("El período está cerrado; debe reabrirlo antes de importar.")
     original_name = Path(uploaded_file.name).name[:255]
     extension = Path(original_name).suffix.lower()
-    if extension not in {".csv", ".xlsx"}:
-        raise ValidationError("Solo se admiten archivos con extensión .csv o .xlsx.")
+    if extension not in {".csv", ".xlsx", ".json"}:
+        raise ValidationError("Solo se admiten archivos .json, .csv o .xlsx.")
     content = uploaded_file.read()
     try:
         parsed = analyze_content(
@@ -141,7 +147,7 @@ def create_preview_batch(*, organization, expected_period, actor, uploaded_file)
             batch = ImportBatch.objects.create(
                 organization=organization,
                 period=expected_period,
-                parser_version=XLSX_PARSER_VERSION if extension == ".xlsx" else PARSER_VERSION,
+                parser_version=(CONTRACT_VERSION if extension == ".json" else XLSX_PARSER_VERSION if extension == ".xlsx" else PARSER_VERSION),
                 original_filename=original_name,
                 source_file=f"private/imports/{timezone.now():%Y/%m}/pending{extension}",
                 file_hash=parsed.file_hash,
@@ -152,6 +158,7 @@ def create_preview_batch(*, organization, expected_period, actor, uploaded_file)
                 declared_vat=parsed.declared_vat,
                 declared_total=parsed.declared_total,
                 validation_errors=parsed.errors,
+                source_metadata=getattr(parsed, "source_metadata", {}),
                 validated_at=timezone.now(),
                 **values,
             )
@@ -226,6 +233,7 @@ def commit_batch(*, batch_id, organization, actor):
         raise ValidationError("El lote no está validado o contiene bloqueos.")
     if _is_period_closed(organization, batch.period):
         raise ValidationError("El período está cerrado; debe reabrirlo antes de importar.")
+    TaxpayerOrganization.objects.select_for_update().get(pk=organization.pk)
     rows = list(batch.rows.select_for_update().order_by("line_number"))
     if any(row.status in {ImportRow.Status.CONFLICT, ImportRow.Status.ERROR} for row in rows):
         raise ValidationError("El lote contiene conflictos o errores y no puede confirmarse.")
@@ -233,6 +241,44 @@ def commit_batch(*, batch_id, organization, actor):
         if row.status != ImportRow.Status.NEW:
             continue
         data = row.normalized_data
+        if batch.parser_version == CONTRACT_VERSION:
+            existing = Sale.objects.filter(
+                organization=organization, origin_system="ELEMENTAL", external_id=data["external_id"]
+            ).first()
+            if existing:
+                raise ValidationError("La información cambió desde la previsualización; vuelva a cargar el archivo.")
+            if Payment.objects.filter(
+                organization=organization,
+                origin_system="ELEMENTAL",
+                external_id__in=[item["external_id"] for item in data["payments"]],
+            ).exists():
+                raise ValidationError("Un pago fue importado desde la previsualización; vuelva a cargar el archivo.")
+            sale = Sale.objects.create(
+                organization=organization,
+                operation_date=date.fromisoformat(data["operation_date"]),
+                detail=data["detail"],
+                customer_name=data.get("customer_name", ""),
+                observations=f"Período de servicio Elemental: {data['service_period']}",
+                tax_classification=data["classification"],
+                net_amount=data["net_amount"], vat_amount=data["vat_amount"], total_amount=data["total_amount"],
+                status=Sale.Status.READY,
+                reconciliation_status=Sale.ReconciliationStatus.RECONCILED,
+                origin_system="ELEMENTAL", external_id=data["external_id"], created_by=actor,
+            )
+            SaleLine.objects.create(sale=sale, description=data["detail"], quantity=1, unit_amount=data["total_amount"], total_amount=data["total_amount"])
+            created_payments = []
+            for payment_data in data["payments"]:
+                created_payments.append(Payment.objects.create(
+                    organization=organization, sale=sale,
+                    payment_date=date.fromisoformat(payment_data["payment_date"]),
+                    amount=payment_data["amount"], transfer_reference=payment_data.get("reference", ""),
+                    origin_system="ELEMENTAL", external_id=payment_data["external_id"], created_by=actor,
+                ))
+            row.sale = sale
+            row.payment = created_payments[0]
+            row.status = ImportRow.Status.IMPORTED
+            row.save(update_fields=["sale", "payment", "status"])
+            continue
         if ElectronicReceipt.objects.filter(
             organization=organization,
             document_type=data["document_type"],

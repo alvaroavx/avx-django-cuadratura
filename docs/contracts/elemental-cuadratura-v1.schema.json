@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:espacio-elementos:elemental-cuadratura:v1",
+  "title": "Contrato Elemental a Cuadratura v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "origin_system", "batch_id", "generated_at", "source_organization", "expected_taxpayer", "selection", "operations", "pending_records", "summary"],
+  "properties": {
+    "contract_version": {"const": "elemental-cuadratura-v1"},
+    "origin_system": {"const": "ELEMENTAL"},
+    "batch_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "source_organization": {"$ref": "#/$defs/sourceOrganization"},
+    "expected_taxpayer": {"$ref": "#/$defs/taxpayer"},
+    "selection": {"$ref": "#/$defs/selection"},
+    "operations": {"type": "array", "maxItems": 5000, "items": {"$ref": "#/$defs/operation"}},
+    "pending_records": {"type": "array", "items": {"$ref": "#/$defs/pending"}},
+    "summary": {"$ref": "#/$defs/summary"}
+  },
+  "$defs": {
+    "identifier": {"type": "string", "minLength": 1, "maxLength": 160},
+    "sourceOrganization": {"type": "object", "additionalProperties": false, "required": ["external_id", "name"], "properties": {"external_id": {"$ref": "#/$defs/identifier"}, "name": {"type": "string", "minLength": 1, "maxLength": 200}}},
+    "taxpayer": {"type": "object", "additionalProperties": false, "required": ["tax_id", "legal_name"], "properties": {"tax_id": {"type": "string", "minLength": 3, "maxLength": 20}, "legal_name": {"type": "string", "minLength": 1, "maxLength": 200}}},
+    "selection": {"type": "object", "additionalProperties": false, "required": ["period", "timezone", "criterion"], "properties": {"period": {"type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"}, "timezone": {"const": "America/Santiago"}, "criterion": {"const": "confirmed_payment_date_in_period"}}},
+    "party": {"type": ["object", "null"], "required": ["external_id", "display_name"], "properties": {"external_id": {"$ref": "#/$defs/identifier"}, "display_name": {"type": "string", "maxLength": 200}}},
+    "tax": {"type": "object", "additionalProperties": false, "required": ["classification", "net", "vat", "total"], "properties": {"classification": {"enum": ["TAXABLE", "EXEMPT"]}, "net": {"type": "integer", "minimum": 0}, "vat": {"type": "integer", "minimum": 0}, "total": {"type": "integer", "minimum": 1}}},
+    "payment": {"type": "object", "additionalProperties": false, "required": ["external_id", "payment_date", "amount", "status", "method", "reference"], "properties": {"external_id": {"$ref": "#/$defs/identifier"}, "payment_date": {"type": "string", "format": "date"}, "amount": {"type": "integer", "minimum": 1}, "status": {"const": "CONFIRMED"}, "method": {"type": "string", "maxLength": 40}, "reference": {"type": "string", "maxLength": 160}}},
+    "operation": {"type": "object", "additionalProperties": false, "required": ["external_id", "operation_date", "service_period", "concept", "detail", "plan", "discipline", "beneficiary", "buyer", "tax", "payments"], "properties": {"external_id": {"$ref": "#/$defs/identifier"}, "operation_date": {"type": "string", "format": "date"}, "service_period": {"type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"}, "concept": {"const": "workshop_classes"}, "detail": {"type": "string", "minLength": 1, "maxLength": 500}, "plan": {"type": ["string", "null"], "maxLength": 160}, "discipline": {"type": ["string", "null"], "maxLength": 160}, "beneficiary": {"$ref": "#/$defs/party"}, "buyer": {"$ref": "#/$defs/party"}, "tax": {"$ref": "#/$defs/tax"}, "payments": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/payment"}}}},
+    "pending": {"type": "object", "required": ["entity_type", "external_id", "reasons"], "properties": {"entity_type": {"type": "string"}, "external_id": {"$ref": "#/$defs/identifier"}, "reasons": {"type": "array", "minItems": 1, "items": {"type": "string", "maxLength": 80}}}},
+    "summary": {"type": "object", "additionalProperties": false, "required": ["operations", "payments", "pending", "total_payments"], "properties": {"operations": {"type": "integer", "minimum": 0}, "payments": {"type": "integer", "minimum": 0}, "pending": {"type": "integer", "minimum": 0}, "total_payments": {"type": "integer", "minimum": 0}}}
+  }
+}

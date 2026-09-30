@@ -1,0 +1,12 @@
+{
+  "contract_version": "elemental-cuadratura-v1",
+  "origin_system": "ELEMENTAL",
+  "batch_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "generated_at": "2026-09-30T12:00:00-03:00",
+  "source_organization": {"external_id": "organization:99", "name": "Taller Ficticio"},
+  "expected_taxpayer": {"tax_id": "77.111.222-3", "legal_name": "Taller Ficticio SpA"},
+  "selection": {"period": "2026-09", "timezone": "America/Santiago", "criterion": "confirmed_payment_date_in_period"},
+  "operations": [{"external_id": "transaction:101", "operation_date": "2026-08-25", "service_period": "2026-08", "concept": "workshop_classes", "detail": "Taller ficticio", "plan": "4 clases", "discipline": "Cerámica", "beneficiary": {"external_id": "person:1", "display_name": "Alumna Ficticia"}, "buyer": null, "tax": {"classification": "EXEMPT", "net": 45000, "vat": 0, "total": 45000}, "payments": [{"external_id": "payment:201", "payment_date": "2026-09-03", "amount": 45000, "status": "CONFIRMED", "method": "transferencia", "reference": "REF-FICTICIA"}]}],
+  "pending_records": [],
+  "summary": {"operations": 1, "payments": 1, "pending": 0, "total_payments": 45000}
+}

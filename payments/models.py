@@ -10,8 +10,17 @@ class Payment(models.Model):
     payment_date = models.DateField()
     amount = models.PositiveBigIntegerField()
     transfer_reference = models.CharField(max_length=160, blank=True)
+    origin_system = models.CharField(max_length=80, blank=True)
+    external_id = models.CharField(max_length=160, blank=True)
     registered_at = models.DateTimeField(auto_now_add=True)
     reconciled_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT)
     class Meta:
-        constraints = [models.CheckConstraint(condition=models.Q(amount__gt=0), name="payment_amount_positive")]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(amount__gt=0), name="payment_amount_positive"),
+            models.UniqueConstraint(
+                fields=["organization", "origin_system", "external_id"],
+                condition=~models.Q(external_id=""),
+                name="uq_payment_org_origin_external",
+            ),
+        ]

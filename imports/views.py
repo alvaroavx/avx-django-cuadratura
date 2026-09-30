@@ -86,6 +86,7 @@ def batch_preview(request, organization_id, period, batch_id):
             (ImportRow.Status.ALREADY_IMPORTED, "Ya existentes e idénticas"),
             (ImportRow.Status.CONFLICT, "Conflictos"),
             (ImportRow.Status.ERROR, "Errores"),
+            (ImportRow.Status.IGNORED, "Pendientes informados por Elemental"),
             (ImportRow.Status.IMPORTED, "Filas importadas"),
         )
     ]
@@ -126,7 +127,7 @@ def batch_commit(request, organization_id, period, batch_id):
         if created:
             messages.success(
                 request,
-                f"Importación confirmada: {committed_batch.new_rows} operaciones creadas sin inventar pagos.",
+                f"Importación confirmada: {committed_batch.new_rows} operaciones creadas.",
             )
         else:
             messages.info(request, "La importación ya había sido confirmada.")

@@ -41,6 +41,7 @@ class ImportBatch(models.Model):
     declared_vat = models.PositiveBigIntegerField(null=True, blank=True)
     declared_total = models.PositiveBigIntegerField(null=True, blank=True)
     validation_errors = models.JSONField(default=list, blank=True)
+    source_metadata = models.JSONField(default=dict, blank=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
     validated_at = models.DateTimeField(null=True, blank=True)
     committed_at = models.DateTimeField(null=True, blank=True)
@@ -83,6 +84,9 @@ class ImportRow(models.Model):
         null=True,
         blank=True,
         related_name="import_rows",
+    )
+    payment = models.ForeignKey(
+        "payments.Payment", on_delete=models.PROTECT, null=True, blank=True, related_name="import_rows"
     )
     created_at = models.DateTimeField(auto_now_add=True)
 

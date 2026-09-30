@@ -3,14 +3,14 @@ from django import forms
 
 class CashbookUploadForm(forms.Form):
     file = forms.FileField(
-        label="Libro de caja",
+        label="Archivo de importación",
         help_text=(
-            "XLSX en el formato del libro de caja o CSV UTF-8. "
-            "Se leerá la hoja del período activo y la carga solo generará una previsualización."
+            "JSON Elemental v1, XLSX del libro de caja o CSV histórico UTF-8. "
+            "La carga solo genera una previsualización."
         ),
         widget=forms.ClearableFileInput(
             attrs={
-                "accept": ".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+                "accept": ".json,.xlsx,.csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
             }
         ),
     )

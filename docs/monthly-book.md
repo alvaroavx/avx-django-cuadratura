@@ -34,3 +34,6 @@ Boletas rechazadas, inciertas, anuladas o todavía en trámite no se presentan c
 ingresos válidos. La vista informa cuántos documentos del período quedaron fuera.
 Copiar o descargar es una operación de lectura: no modifica documentos, no emite
 ante el SII y no cierra el período.
+# Importación desde Elemental
+
+La pantalla Importación acepta JSON `elemental-cuadratura-v1` además de XLSX y CSV. Comprueba versión, UTF-8, tamaño máximo de 2 MiB, estructura, RUT destino, período, tipos, longitudes, montos y referencias. La previsualización separa nuevas, idénticas, conflictos, errores y pendientes declarados por Elemental. La confirmación es atómica y no cierra el período.

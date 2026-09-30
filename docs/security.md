@@ -13,3 +13,6 @@ Las pruebas cubren manipulación de URL, POST, UUID subordinado, rol de solo lec
 Las importaciones limitan el CSV a 2 MiB y el XLSX a 10 MiB, con un máximo de 500 operaciones por período. Validan extensión, estructura, organización, período, clasificación y montos; el CSV además exige UTF-8 y delimitador reconocible. El archivo original queda bajo `media/private/imports` sin ruta web pública. Los lotes se identifican por SHA-256 dentro de cada organización y período, no se registra contenido personal en logs y los lotes confirmados son append-only en PostgreSQL. Los textos con prefijos `=`, `+`, `-` o `@` se conservan como dato original, pero se neutralizan antes de exportarlos a XLSX.
 
 Nunca se deben guardar certificado, contraseña, CAF, llave privada o llave maestra en Git, logs o texto plano. La futura llave maestra vivirá en un secret manager/HSM fuera de PostgreSQL.
+# Integración Elemental
+
+El nombre de origen no concede acceso. La carga y confirmación siguen `IMPORT_ROLES` y el aislamiento por organización; además el RUT declarado debe coincidir con el contribuyente activo. No se registran payloads completos, credenciales ni comprobantes. El archivo original permanece en almacenamiento privado.

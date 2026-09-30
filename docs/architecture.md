@@ -27,3 +27,12 @@ Se modelaron literalmente los estados solicitados para venta, boleta, conciliaci
 ## Límites deliberados
 
 No hay API, tareas asíncronas, SPA, microservicios ni emisión SII. Las invitaciones se crean con digest SHA-256 y caducidad, pero el transporte por correo y la pantalla de aceptación son trabajo posterior. El administrador de plataforma dispone además de alta controlada: crea usuario y membresía en una transacción, guarda la contraseña inicial con el hasher de Django y no la registra en auditoría.
+# Recepción Elemental v1
+
+`imports.elemental_v1` valida y normaliza el contrato `elemental-cuadratura-v1`; `imports.services` persiste la previsualización y confirma. Esta separación permite reemplazar el archivo por una API sin reimplementar clasificación, idempotencia ni escritura financiera.
+
+Una operación Elemental crea una `Sale` `READY`, uno o varios `Payment` y ninguna `ElectronicReceipt`. `Sale` y `Payment` guardan `origin_system=ELEMENTAL` y su identificador externo. Restricciones únicas de base de datos y bloqueo de la organización serializan confirmaciones concurrentes.
+
+Un identificador existente idéntico es no-op. Contenido distinto, pago externo huérfano o coincidencia de fecha y monto con una venta que no proviene de Elemental es conflicto; entre ventas Elemental solo decide el identificador. No se sobrescribe una venta documentada y nunca se enlaza por nombre, fecha y monto.
+
+Contrato y ejemplo ficticio: [docs/contracts](contracts/).
