@@ -86,7 +86,7 @@ def batch_preview(request, organization_id, period, batch_id):
             (ImportRow.Status.ALREADY_IMPORTED, "Ya existentes e idénticas"),
             (ImportRow.Status.CONFLICT, "Conflictos"),
             (ImportRow.Status.ERROR, "Errores"),
-            (ImportRow.Status.IGNORED, "Pendientes informados por Elemental"),
+            (ImportRow.Status.IGNORED, "Excluidos por el sistema de origen"),
             (ImportRow.Status.IMPORTED, "Filas importadas"),
         )
     ]

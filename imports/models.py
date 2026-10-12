@@ -55,6 +55,13 @@ class ImportBatch(models.Model):
         ]
         ordering = ["-uploaded_at"]
 
+    EXTERNAL_CONTRACTS = ("elemental-cuadratura-v1", "cuadratura-operations-v1")
+
+    @property
+    def is_external_contract(self):
+        """Lote de operaciones y pagos de otro sistema (archivo Elemental v1 o API)."""
+        return self.parser_version in self.EXTERNAL_CONTRACTS
+
 
 class ImportRow(models.Model):
     class Status(models.TextChoices):

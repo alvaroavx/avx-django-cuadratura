@@ -27,7 +27,11 @@ Se modelaron literalmente los estados solicitados para venta, boleta, conciliaci
 
 ## Límites deliberados
 
-No hay API, tareas asíncronas, SPA, microservicios ni emisión SII. Las invitaciones se crean con digest SHA-256 y caducidad, pero el transporte por correo y la pantalla de aceptación son trabajo posterior. El administrador de plataforma dispone además de alta controlada: crea usuario y membresía en una transacción, guarda la contraseña inicial con el hasher de Django y no la registra en auditoría.
+No hay tareas asíncronas, SPA, microservicios ni emisión SII. La única API es la de recepción de lotes (ver [API v1](#api-v1)). Las invitaciones se crean con digest SHA-256 y caducidad, pero el transporte por correo y la pantalla de aceptación son trabajo posterior. El administrador de plataforma dispone además de alta controlada: crea usuario y membresía en una transacción, guarda la contraseña inicial con el hasher de Django y no la registra en auditoría.
+
+## API v1
+
+`integrations.api` expone `/api/v1/` ([ADR 0005](adr/0005-api-v1.md), [guía](api-v1.md)). El documento `cuadratura-operations-v1` se valida en `imports/operations_v1.py`. Produce filas normalizadas con la misma forma que Elemental v1, así que la clasificación (`classify_elemental`) y la confirmación (`commit_batch`) son compartidas y ahora reciben el `origin_system` del cliente. El lote guarda en `source_metadata` el origen, el `batch_id` y la huella del contenido; con eso se resuelve la idempotencia sin tablas nuevas. Un origen admite a lo sumo un lote activo (en revisión o confirmado) por período: otro `batch_id` responde 409 `period_already_submitted`. La autenticación, la firma y los límites viven en `integrations/security.py` ([ADR 0006](adr/0006-seguridad-api.md)). El autor del lote es el usuario técnico del cliente; quien confirma es una persona con `IMPORT_ROLES`. En la confirmación, `observations` registra «Período de servicio informado por {origen}» cuando viene `service_period`.
 
 ## Recepción Elemental v1
 

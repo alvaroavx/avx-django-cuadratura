@@ -131,7 +131,8 @@ def parse_elemental_json(content):
     return parsed
 
 
-def classify_elemental(parsed, *, organization, expected_period):
+def classify_elemental(parsed, *, organization, expected_period, origin_system="ELEMENTAL"):
+    """Clasifica filas normalizadas de un contrato externo (Elemental v1 u operaciones v1)."""
     if normalize_tax_id(parsed.taxpayer_tax_id) != normalize_tax_id(organization.tax_id):
         parsed.errors.append("El contribuyente esperado no corresponde a la organización destino.")
     if parsed.period != expected_period:
@@ -140,9 +141,9 @@ def classify_elemental(parsed, *, organization, expected_period):
         if row.status != ImportRow.Status.NEW:
             continue
         data = row.normalized
-        sale = Sale.objects.filter(organization=organization, origin_system="ELEMENTAL", external_id=data["external_id"]).first()
+        sale = Sale.objects.filter(organization=organization, origin_system=origin_system, external_id=data["external_id"]).first()
         payment_ids = [item["external_id"] for item in data["payments"]]
-        payments = list(Payment.objects.filter(organization=organization, origin_system="ELEMENTAL", external_id__in=payment_ids))
+        payments = list(Payment.objects.filter(organization=organization, origin_system=origin_system, external_id__in=payment_ids))
         if sale:
             identical = _same_sale(sale, data) and len(payments) == len(payment_ids) and all(
                 any(p.external_id == item["external_id"] and p.sale_id == sale.id and p.payment_date.isoformat() == item["payment_date"] and p.amount == item["amount"] for p in payments)
@@ -153,7 +154,7 @@ def classify_elemental(parsed, *, organization, expected_period):
         elif payments:
             row.status = ImportRow.Status.CONFLICT
             row.errors.append("Un identificador de pago ya existe sin la operación esperada.")
-        elif Sale.objects.filter(organization=organization, operation_date=data["operation_date"], total_amount=data["total_amount"]).exclude(origin_system="ELEMENTAL").exists():
+        elif Sale.objects.filter(organization=organization, operation_date=data["operation_date"], total_amount=data["total_amount"]).exclude(origin_system=origin_system).exists():
             row.status = ImportRow.Status.CONFLICT
             row.errors.append("Existe una operación histórica posiblemente duplicada; debe conciliarse explícitamente.")
     if any(row.status == ImportRow.Status.CONFLICT for row in parsed.rows):

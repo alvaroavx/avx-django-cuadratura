@@ -14,7 +14,7 @@ Lee `README.md`, `docs/README.md`, `docs/architecture.md`, `docs/security.md`, `
 - `sales/`, `payments/`, `documents/`: operación financiera, DTE y conciliación.
 - `imports/`: preview/commit de XLSX/CSV histórico y JSON `elemental-cuadratura-v1`, más archivo privado. El contrato está en `docs/contracts/`; las diferencias entre esquema y validación real, en `docs/architecture.md`.
 - `reports/`: libro provisional, exportación de boletas, cierre, reapertura y vista de auditoría.
-- `integrations/`: reservado, sin modelos (ADR-0003).
+- `integrations/`: API HTTP v1 (`/api/v1/`), clientes técnicos con token y contrato genérico `cuadratura-operations-v1` (ADR-0005, guía `docs/api-v1.md`) con seguridad de dos factores, intentos fallidos y límites (ADR-0006, checklist `docs/seguridad-produccion.md`). La API crea lotes en preview; nunca confirma. No relajes estos controles sin un ADR.
 - `audit/`: eventos append-only; no registrar referencias de pago ni secretos.
 - `sii/`: contrato deshabilitado, no emisión real.
 

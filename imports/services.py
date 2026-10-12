@@ -20,6 +20,10 @@ from .parser import (
     parse_cashbook_xlsx,
 )
 from .elemental_v1 import CONTRACT_VERSION, classify_elemental, parse_elemental_json
+from .operations_v1 import CONTRACT_VERSION as OPERATIONS_CONTRACT_VERSION
+from .operations_v1 import parse_operations_document
+
+EXTERNAL_CONTRACTS = {CONTRACT_VERSION, OPERATIONS_CONTRACT_VERSION}
 
 
 def _is_period_closed(organization, period):
@@ -140,6 +144,108 @@ def create_preview_batch(*, organization, expected_period, actor, uploaded_file)
         )
     except CsvImportError as exc:
         raise ValidationError(str(exc)) from exc
+    parser_version = (
+        CONTRACT_VERSION if extension == ".json"
+        else XLSX_PARSER_VERSION if extension == ".xlsx"
+        else PARSER_VERSION
+    )
+    return _save_preview_batch(
+        organization=organization,
+        expected_period=expected_period,
+        actor=actor,
+        parsed=parsed,
+        content=content,
+        original_name=original_name,
+        extension=extension,
+        parser_version=parser_version,
+    )
+
+
+class BatchIdConflict(ValidationError):
+    """El cliente reutilizó un batch_id con contenido distinto."""
+
+
+class PeriodClosed(ValidationError):
+    """El período destino tiene un cierre vigente."""
+
+
+class PeriodAlreadySubmitted(ValidationError):
+    """El origen ya tiene un lote activo (en revisión o confirmado) para el período."""
+
+
+def create_api_preview_batch(*, organization, expected_period, client, content, signature=None):
+    """Recibe un documento `cuadratura-operations-v1` desde la API y lo deja en preview.
+
+    Nunca confirma: una persona con rol de importación revisa y confirma en la web.
+    `batch_id` es la llave de idempotencia del cliente: reenviar el mismo contenido
+    devuelve el lote existente; reutilizarlo con otro contenido es un conflicto. Un
+    lote bloqueado puede reenviarse para volver a validarse. Mientras no exista un flujo
+    de corrección, un origen tiene a lo sumo un lote activo por período: otro `batch_id`
+    para el mismo período es un conflicto. `signature` es la evidencia de la firma del
+    request y queda en `source_metadata`.
+    Devuelve (lote, creado).
+    """
+    if _is_period_closed(organization, expected_period):
+        raise PeriodClosed("El período está cerrado; debe reabrirlo antes de importar.")
+    try:
+        parsed = parse_operations_document(content, origin_system=client.origin_system)
+    except CsvImportError as exc:
+        raise ValidationError(str(exc)) from exc
+    metadata = parsed.source_metadata
+    if signature:
+        metadata["signature"] = signature
+    with transaction.atomic():
+        TaxpayerOrganization.objects.select_for_update().get(pk=organization.pk)
+        active = ImportBatch.objects.filter(
+            organization=organization,
+            parser_version=OPERATIONS_CONTRACT_VERSION,
+            source_metadata__origin_system=client.origin_system,
+        ).exclude(status=ImportBatch.Status.BLOCKED)
+        previous = active.filter(source_metadata__batch_id=metadata["batch_id"]).first()
+        if previous:
+            if (
+                previous.period != expected_period
+                or previous.source_metadata.get("content_fingerprint") != metadata["content_fingerprint"]
+            ):
+                raise BatchIdConflict("batch_id ya fue usado con un contenido diferente.")
+            return previous, False
+        if active.filter(period=expected_period).exists():
+            raise PeriodAlreadySubmitted(
+                "Ya existe un lote activo de este origen para el período; no se admiten correcciones por API."
+            )
+        parsed = classify_elemental(
+            parsed,
+            organization=organization,
+            expected_period=expected_period,
+            origin_system=client.origin_system,
+        )
+        batch, created = _save_preview_batch(
+            organization=organization,
+            expected_period=expected_period,
+            actor=client.service_user,
+            parsed=parsed,
+            content=content,
+            original_name=f"api-{client.origin_system.lower()}-{expected_period:%Y-%m}.json",
+            extension=".json",
+            parser_version=OPERATIONS_CONTRACT_VERSION,
+            audit_metadata={"api_client": str(client.pk)},
+        )
+    return batch, created
+
+
+def _save_preview_batch(
+    *,
+    organization,
+    expected_period,
+    actor,
+    parsed,
+    content,
+    original_name,
+    extension,
+    parser_version,
+    audit_metadata=None,
+):
+    audit_metadata = audit_metadata or {}
     blocked = bool(parsed.errors)
     values = _batch_counts(parsed)
     try:
@@ -147,7 +253,7 @@ def create_preview_batch(*, organization, expected_period, actor, uploaded_file)
             batch = ImportBatch.objects.create(
                 organization=organization,
                 period=expected_period,
-                parser_version=(CONTRACT_VERSION if extension == ".json" else XLSX_PARSER_VERSION if extension == ".xlsx" else PARSER_VERSION),
+                parser_version=parser_version,
                 original_filename=original_name,
                 source_file=f"private/imports/{timezone.now():%Y/%m}/pending{extension}",
                 file_hash=parsed.file_hash,
@@ -190,7 +296,7 @@ def create_preview_batch(*, organization, expected_period, actor, uploaded_file)
             actor=actor,
             action="import.repeated_file",
             target=existing,
-            metadata={"period": expected_period.isoformat()},
+            metadata={"period": expected_period.isoformat(), **audit_metadata},
         )
         return existing, False
     record_event(
@@ -198,7 +304,7 @@ def create_preview_batch(*, organization, expected_period, actor, uploaded_file)
         actor=actor,
         action="import.uploaded",
         target=batch,
-        metadata={"period": expected_period.isoformat(), "size": batch.file_size},
+        metadata={"period": expected_period.isoformat(), "size": batch.file_size, **audit_metadata},
     )
     record_event(
         organization=organization,
@@ -211,6 +317,7 @@ def create_preview_batch(*, organization, expected_period, actor, uploaded_file)
             "new_rows": batch.new_rows,
             "conflicts": batch.conflict_rows,
             "errors": batch.error_rows,
+            **audit_metadata,
         },
     )
     if batch.conflict_rows:
@@ -222,6 +329,14 @@ def create_preview_batch(*, organization, expected_period, actor, uploaded_file)
             metadata={"count": batch.conflict_rows},
         )
     return batch, True
+
+
+def _service_period_observation(batch, origin_system, data):
+    if batch.parser_version == CONTRACT_VERSION:
+        return f"Período de servicio Elemental: {data['service_period']}"
+    if data.get("service_period"):
+        return f"Período de servicio informado por {origin_system}: {data['service_period']}"
+    return ""
 
 
 @transaction.atomic
@@ -241,15 +356,16 @@ def commit_batch(*, batch_id, organization, actor):
         if row.status != ImportRow.Status.NEW:
             continue
         data = row.normalized_data
-        if batch.parser_version == CONTRACT_VERSION:
+        if batch.parser_version in EXTERNAL_CONTRACTS:
+            origin_system = batch.source_metadata.get("origin_system", "ELEMENTAL")
             existing = Sale.objects.filter(
-                organization=organization, origin_system="ELEMENTAL", external_id=data["external_id"]
+                organization=organization, origin_system=origin_system, external_id=data["external_id"]
             ).first()
             if existing:
                 existing_payments = list(
                     Payment.objects.filter(
                         organization=organization,
-                        origin_system="ELEMENTAL",
+                        origin_system=origin_system,
                         external_id__in=[item["external_id"] for item in data["payments"]],
                     )
                 )
@@ -283,7 +399,7 @@ def commit_batch(*, batch_id, organization, actor):
                 continue
             if Payment.objects.filter(
                 organization=organization,
-                origin_system="ELEMENTAL",
+                origin_system=origin_system,
                 external_id__in=[item["external_id"] for item in data["payments"]],
             ).exists():
                 raise ValidationError("Un pago fue importado desde la previsualización; vuelva a cargar el archivo.")
@@ -292,12 +408,12 @@ def commit_batch(*, batch_id, organization, actor):
                 operation_date=date.fromisoformat(data["operation_date"]),
                 detail=data["detail"],
                 customer_name=data.get("customer_name", ""),
-                observations=f"Período de servicio Elemental: {data['service_period']}",
+                observations=_service_period_observation(batch, origin_system, data),
                 tax_classification=data["classification"],
                 net_amount=data["net_amount"], vat_amount=data["vat_amount"], total_amount=data["total_amount"],
                 status=Sale.Status.READY,
                 reconciliation_status=Sale.ReconciliationStatus.RECONCILED,
-                origin_system="ELEMENTAL", external_id=data["external_id"], created_by=actor,
+                origin_system=origin_system, external_id=data["external_id"], created_by=actor,
             )
             SaleLine.objects.create(sale=sale, description=data["detail"], quantity=1, unit_amount=data["total_amount"], total_amount=data["total_amount"])
             created_payments = []
@@ -306,7 +422,7 @@ def commit_batch(*, batch_id, organization, actor):
                     organization=organization, sale=sale,
                     payment_date=date.fromisoformat(payment_data["payment_date"]),
                     amount=payment_data["amount"], transfer_reference=payment_data.get("reference", ""),
-                    origin_system="ELEMENTAL", external_id=payment_data["external_id"], created_by=actor,
+                    origin_system=origin_system, external_id=payment_data["external_id"], created_by=actor,
                 ))
             row.sale = sale
             row.payment = created_payments[0]

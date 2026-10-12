@@ -142,6 +142,7 @@ class ElementalV1ImportTests(TestCase):
         first = self.preview(self.payload())
         second = self.preview(self.payload(batch="h" * 64))
         commit_batch(batch_id=first.id, organization=self.org, actor=self.user)
-        with self.assertRaises(ValidationError):
-            commit_batch(batch_id=second.id, organization=self.org, actor=self.user)
+        # Desde c1c7426 la segunda confirmación idéntica es idempotente: no falla ni duplica.
+        commit_batch(batch_id=second.id, organization=self.org, actor=self.user)
+        self.assertEqual(second.rows.get(line_number=1).status, "ALREADY_IMPORTED")
         self.assertEqual((Sale.objects.count(), Payment.objects.count()), (1, 1))

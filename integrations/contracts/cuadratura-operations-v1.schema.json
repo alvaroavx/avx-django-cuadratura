@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cuadratura-operations-v1",
+  "title": "Lote de operaciones para Cuadratura v1",
+  "description": "Documento que un sistema externo envía a POST /api/v1/organizations/{id}/periods/{YYYY-MM}/batches/. Montos en pesos chilenos enteros. Solo pagos confirmados. El sistema de origen lo determina el token, no el documento. Las propiedades no listadas se ignoran.",
+  "type": "object",
+  "required": ["contract_version", "batch_id", "generated_at", "period", "taxpayer", "operations", "summary"],
+  "properties": {
+    "contract_version": {"const": "cuadratura-operations-v1"},
+    "batch_id": {
+      "type": "string", "minLength": 1, "maxLength": 64,
+      "description": "Llave de idempotencia del emisor. Reenviar el mismo contenido devuelve el mismo lote; reutilizarla con otro contenido responde 409."
+    },
+    "generated_at": {"type": "string", "format": "date-time", "description": "No forma parte de la huella de idempotencia."},
+    "period": {"type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$", "description": "Debe coincidir con el período de la URL."},
+    "taxpayer": {
+      "type": "object",
+      "required": ["tax_id"],
+      "properties": {
+        "tax_id": {"type": "string", "maxLength": 20, "description": "RUT esperado; si no coincide con la organización, el lote queda bloqueado."},
+        "legal_name": {"type": "string", "maxLength": 200}
+      }
+    },
+    "source": {
+      "type": "object",
+      "description": "Opcional. Identificación informativa de la entidad en el sistema emisor.",
+      "properties": {
+        "organization_id": {"type": "string", "maxLength": 160},
+        "name": {"type": "string", "maxLength": 200}
+      }
+    },
+    "operations": {
+      "type": "array", "maxItems": 5000,
+      "items": {
+        "type": "object",
+        "required": ["external_id", "operation_date", "detail", "tax", "payments"],
+        "properties": {
+          "external_id": {"type": "string", "minLength": 1, "maxLength": 160, "description": "Único por sistema de origen y organización."},
+          "operation_date": {"type": "string", "format": "date"},
+          "service_period": {"type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"},
+          "detail": {"type": "string", "minLength": 1, "maxLength": 500},
+          "customer_name": {"type": "string", "maxLength": 200},
+          "tax": {
+            "type": "object",
+            "required": ["classification", "net", "vat", "total"],
+            "properties": {
+              "classification": {"enum": ["TAXABLE", "EXEMPT"]},
+              "net": {"type": "integer", "minimum": 1},
+              "vat": {"type": "integer", "minimum": 0, "description": "0 si es EXEMPT. net + vat = total."},
+              "total": {"type": "integer", "minimum": 1}
+            }
+          },
+          "payments": {
+            "type": "array", "minItems": 1,
+            "description": "Pagos confirmados; su suma debe ser igual a tax.total.",
+            "items": {
+              "type": "object",
+              "required": ["external_id", "payment_date", "amount"],
+              "properties": {
+                "external_id": {"type": "string", "minLength": 1, "maxLength": 160},
+                "payment_date": {"type": "string", "format": "date"},
+                "amount": {"type": "integer", "minimum": 1},
+                "reference": {"type": "string", "maxLength": 160}
+              }
+            }
+          }
+        }
+      }
+    },
+    "excluded_records": {
+      "type": "array",
+      "description": "Opcional e informativo: registros que el emisor dejó fuera y por qué. No se importan.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "external_id": {"type": "string", "maxLength": 160},
+          "reasons": {"type": "array", "items": {"type": "string", "maxLength": 80}, "maxItems": 10}
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["operations", "payments", "total_amount"],
+      "properties": {
+        "operations": {"type": "integer", "minimum": 0},
+        "payments": {"type": "integer", "minimum": 0},
+        "total_amount": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}
