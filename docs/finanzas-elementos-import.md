@@ -30,6 +30,11 @@ El objetivo acordado no es conservar toda la historia. Las boletas aceptadas ya 
 4. Los casos ambiguos, con diferencia de monto o sin fila se mantienen sin pago. No se altera la boleta oficial.
 5. Los pagos a profesores, sus retenciones, gastos y otros ingresos no se incluyen en esta carga.
 
+## Lo que existe en el repositorio
+
+- El servicio `payments.services.register_historical_receipt_payment` (`payments/services.py`) implementa los criterios 1 a 4 para una boleta: exige una boleta `ACCEPTED` con fecha tributaria y una venta `DOCUMENTED`, y que el monto iguale al de ambas. Crea un `Payment` sin `origin_system` ni `external_id`, marca la venta `RECONCILED` y registra `payment.historical_matched` con hash y fila de la fuente. Si ya existe un único pago idéntico, no hace nada; cualquier otro pago previo bloquea con error.
+- No hay vista, comando de management ni script versionado que lea `data/Finanzas Elementos.xlsx` o busque la coincidencia por tipo, folio, fecha y monto. Tampoco hay pruebas del servicio. Las cifras de la sección «Evidencia observada» provienen de una ejecución local que el repositorio no permite reproducir.
+
 ## Próxima fuente
 
-La siguiente carga queda a la espera del informe oficial del SII sobre boletas de honorarios emitidas. Ese informe permitirá asociar egresos de profesores y retenciones con evidencia oficial.
+**Planificado / no implementado.** La siguiente carga queda a la espera del informe oficial del SII sobre boletas de honorarios emitidas. Ese informe permitirá asociar egresos de profesores y retenciones con evidencia oficial. No existen modelos de egreso ni de boleta de honorarios, ni código que procese esa fuente.

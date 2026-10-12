@@ -5,14 +5,19 @@
 3. Cada consulta subordinada incluye `organization=org`; un UUID de venta de otro tenant responde 404.
 4. Ningún formulario operativo contiene `organization`; un campo POST inyectado se ignora.
 5. Todas las restricciones críticas de dinero y unicidad viven además en PostgreSQL.
-6. Auditoría evita datos de pago, referencia, receptor y secretos; registra identificadores técnicos y metadatos mínimos.
+6. Auditoría evita referencias de transferencia, receptor y secretos; registra identificadores técnicos y metadatos mínimos. Excepciones conocidas: `payment.historical_matched` guarda fecha y monto del pago, folio y hash de la fuente; `month.reopened` guarda el motivo escrito por la persona.
 7. El gateway deshabilitado usa un mensaje fijo y no refleja argumentos.
 
-Las pruebas cubren manipulación de URL, POST, UUID subordinado, rol de solo lectura, doble envío concurrente y ausencia de la referencia de pago en auditoría. Antes de producción deben añadirse TLS, cookies seguras, proxy confiable, backup/restauración ensayada, retención de archivos, monitoreo, política de sesión, antivirus de cargas y revisión de dependencias.
+Las pruebas cubren manipulación de URL, POST, UUID subordinado, rol de solo lectura, doble envío concurrente y ausencia de la referencia de pago en auditoría.
 
-Las importaciones limitan el CSV a 2 MiB y el XLSX a 10 MiB, con un máximo de 500 operaciones por período. Validan extensión, estructura, organización, período, clasificación y montos; el CSV además exige UTF-8 y delimitador reconocible. El archivo original queda bajo `media/private/imports` sin ruta web pública. Los lotes se identifican por SHA-256 dentro de cada organización y período, no se registra contenido personal en logs y los lotes confirmados son append-only en PostgreSQL. Los textos con prefijos `=`, `+`, `-` o `@` se conservan como dato original, pero se neutralizan antes de exportarlos a XLSX.
+El admin de Django (`/admin/`) registra todos los modelos y no aplica el aislamiento por organización: cualquier usuario `is_staff` con permisos de modelo ve y edita datos de todos los contribuyentes. Solo los triggers de PostgreSQL bloquean ahí eliminaciones y cambios a boletas aceptadas. `settings.py` no fija `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`, HSTS ni proxy confiable; `DEBUG` es falso por defecto y `SECRET_KEY` tiene un valor inseguro de respaldo si falta la variable.
+
+Antes de producción deben añadirse TLS, cookies seguras, proxy confiable, backup/restauración ensayada, retención de archivos, monitoreo, política de sesión, antivirus de cargas y revisión de dependencias.
+
+Las importaciones limitan el tamaño y la cantidad de filas: CSV hasta 2 MiB y 500 filas totales del archivo (incluidos metadatos, cabecera y totales); XLSX hasta 10 MiB, 500 operaciones en la hoja del período y 5000 filas técnicas bajo la cabecera; JSON Elemental hasta 2 MiB y 5000 operaciones. Validan extensión (`.csv`, `.xlsx`, `.json`), estructura, organización, período, clasificación y montos; el CSV además exige UTF-8 (con o sin BOM), rechaza bytes nulos y detecta `,` o `;`. Django además limita el cuerpo no-archivo a 3 MiB y guarda en memoria cargas de hasta 2 MiB. El archivo original queda bajo `media/private/imports` sin ruta web pública. Los lotes se identifican por SHA-256 dentro de cada organización y período, y no se registra contenido personal en logs. PostgreSQL impide eliminar lotes confirmados y sus filas; las actualizaciones no están bloqueadas por trigger. Las filas guardan en `ImportRow.original_data`/`normalized_data` el contenido del archivo, incluidos detalle, montos y, en Elemental, nombre visible del beneficiario y referencias de pago. Los textos con prefijos `=`, `+`, `-` o `@` se conservan como dato original, pero se neutralizan antes de exportarlos a XLSX.
 
 Nunca se deben guardar certificado, contraseña, CAF, llave privada o llave maestra en Git, logs o texto plano. La futura llave maestra vivirá en un secret manager/HSM fuera de PostgreSQL.
-# Integración Elemental
 
-El nombre de origen no concede acceso. La carga y confirmación siguen `IMPORT_ROLES` y el aislamiento por organización; además el RUT declarado debe coincidir con el contribuyente activo. No se registran payloads completos, credenciales ni comprobantes. El archivo original permanece en almacenamiento privado.
+## Integración Elemental
+
+El nombre de origen no concede acceso. La carga y confirmación siguen `IMPORT_ROLES` y el aislamiento por organización; además el RUT declarado debe coincidir con el contribuyente activo. No se registran payloads completos en auditoría ni logs, y el contrato no transporta credenciales ni comprobantes. El archivo original permanece en almacenamiento privado y su contenido normalizado queda en las filas del lote (ver arriba). `source_organization` y `batch_id` no se validan contra ningún registro: solo se guardan como metadatos.

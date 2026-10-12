@@ -12,8 +12,9 @@ Lee `README.md`, `docs/README.md`, `docs/architecture.md`, `docs/security.md`, `
 
 - `organizations/`: tenants, membresías y autorización por organización.
 - `sales/`, `payments/`, `documents/`: operación financiera, DTE y conciliación.
-- `imports/`: preview/commit CSV histórico y archivo privado.
-- `reports/`: libro, cierre, exportación y reapertura.
+- `imports/`: preview/commit de XLSX/CSV histórico y JSON `elemental-cuadratura-v1`, más archivo privado. El contrato está en `docs/contracts/`; las diferencias entre esquema y validación real, en `docs/architecture.md`.
+- `reports/`: libro provisional, exportación de boletas, cierre, reapertura y vista de auditoría.
+- `integrations/`: reservado, sin modelos (ADR-0003).
 - `audit/`: eventos append-only; no registrar referencias de pago ni secretos.
 - `sii/`: contrato deshabilitado, no emisión real.
 
@@ -26,4 +27,4 @@ Lee `README.md`, `docs/README.md`, `docs/architecture.md`, `docs/security.md`, `
 
 ## Validación y seguridad
 
-Las pruebas requieren PostgreSQL. Ejecuta los comandos de `README.md`; revisa aislamiento multiempresa, idempotencia, auditoría e importaciones. Nunca agregues secretos, CAF, certificados o llaves privadas al repositorio, logs o fixtures.
+Las pruebas requieren PostgreSQL y un rol con `CREATEDB`, o un clúster desechable. Ejecuta los comandos de `README.md`, que también documenta la prueba que hoy falla; revisa aislamiento multiempresa, idempotencia, auditoría e importaciones. Nunca agregues secretos, CAF, certificados o llaves privadas al repositorio, logs o fixtures.

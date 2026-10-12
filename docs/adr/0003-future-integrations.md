@@ -13,3 +13,6 @@ Los futuros modelos serán UUID y tenant-scoped cuando corresponda:
 
 No se agregan tablas hasta aprobar el contrato API o el spike SII; así se evita convertir hipótesis en esquema persistente.
 
+## Verificación contra el código (2026-10-12)
+
+Sigue sin implementarse: `integrations/` no tiene modelos ni migraciones. La recepción `elemental-cuadratura-v1` se implementó como carga de archivo por una persona autorizada, sin `ApiClient`, `ApiClientOrganization` ni `IdempotencyRecord`. Su idempotencia usa las restricciones únicas `(organization, origin_system, external_id)` de `Sale` y `Payment`, junto con el SHA-256 del archivo por organización y período en `ImportBatch`. Estos modelos siguen siendo una propuesta para cuando exista una API.
